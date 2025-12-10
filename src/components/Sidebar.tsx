@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
 import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
+import ThemeToggle from './ThemeToggle';
 
 interface SidebarProps {
   feeds: Feed[];
@@ -263,12 +264,38 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   }
 
   return (
-    <div className="w-64 border-r border-gray-200 bg-white h-screen flex flex-col">
-      <div className="p-8 border-b border-gray-200 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">The Signal</h1>
+    <div 
+      className="w-64 border-r h-screen flex flex-col"
+      style={{ 
+        backgroundColor: 'var(--theme-card-bg)', 
+        borderColor: 'var(--theme-border)',
+        color: 'var(--theme-text)'
+      }}
+    >
+      <div 
+        className="p-8 border-b flex items-center justify-between"
+        style={{ borderColor: 'var(--theme-border)' }}
+      >
+        <h1 
+          className="text-2xl font-semibold tracking-tight"
+          style={{ color: 'var(--theme-text)' }}
+        >
+          The Signal
+        </h1>
         <button
           onClick={onToggle}
-          className="group/toggle relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+          className="group/toggle relative p-2 rounded transition-colors"
+          style={{
+            color: 'var(--theme-text-muted)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-secondary)';
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-muted)';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <rect x="3" y="3" width="18" height="18" rx="1" strokeWidth="2" />
@@ -286,26 +313,57 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
             <Link
               key={item.path}
               to={item.path}
-              className={`block px-3 py-2 text-sm font-medium transition-colors ${
-                location.pathname === item.path
-                  ? 'bg-gray-100 text-black'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-black'
-              }`}
+              className="block px-3 py-2 text-sm font-medium transition-colors rounded"
+              style={{
+                backgroundColor: location.pathname === item.path ? 'var(--theme-hover-bg)' : 'transparent',
+                color: location.pathname === item.path ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                if (location.pathname !== item.path) {
+                  e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+                  e.currentTarget.style.color = 'var(--theme-text)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (location.pathname !== item.path) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                }
+              }}
             >
               {item.label}
             </Link>
           ))}
         </div>
 
-        <div className="border-t border-gray-200 pt-6">
+        <div 
+          className="border-t pt-6"
+          style={{ borderColor: 'var(--theme-border)' }}
+        >
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <h2 
+              className="text-xs font-medium uppercase tracking-wider"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
               Feeds
             </h2>
             <button
               onClick={handleRefreshAll}
               disabled={isRefreshing || feeds.length === 0}
-              className="text-xs text-gray-500 hover:text-gray-700 disabled:text-gray-300 disabled:cursor-not-allowed"
+              className="text-xs disabled:cursor-not-allowed transition-colors"
+              style={{
+                color: isRefreshing || feeds.length === 0 ? 'var(--theme-text-muted)' : 'var(--theme-text-secondary)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isRefreshing && feeds.length > 0) {
+                  e.currentTarget.style.color = 'var(--theme-text)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isRefreshing && feeds.length > 0) {
+                  e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                }
+              }}
               title="Refresh all feeds"
             >
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
@@ -322,13 +380,31 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                   setError(null);
                 }}
                 placeholder="RSS feed URL"
-                className="flex-1 px-2 py-1.5 text-xs border border-gray-300 focus:outline-none focus:ring-1 focus:ring-black focus:border-black"
+                className="flex-1 px-2 py-1.5 text-xs border focus:outline-none focus:ring-1 transition-colors"
+                style={{
+                  borderColor: 'var(--theme-border)',
+                  backgroundColor: 'var(--theme-card-bg)',
+                  color: 'var(--theme-text)',
+                }}
                 disabled={isAddingFeed}
               />
               <button
                 type="submit"
                 disabled={isAddingFeed}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-black hover:bg-gray-900 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed transition-colors"
+                style={{
+                  backgroundColor: 'var(--theme-accent)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isAddingFeed) {
+                    e.currentTarget.style.opacity = '0.9';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isAddingFeed) {
+                    e.currentTarget.style.opacity = '1';
+                  }
+                }}
               >
                 {isAddingFeed ? '...' : 'Add'}
               </button>
@@ -340,12 +416,26 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
           <div className="space-y-1">
             {feeds.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-gray-400">No feeds added yet</p>
+              <p 
+                className="px-3 py-2 text-xs"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                No feeds added yet
+              </p>
             ) : (
               feeds.map((feed) => (
                 <div
                   key={feed.id}
-                  className="group w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  className="group w-full px-3 py-2 text-sm rounded transition-colors"
+                  style={{
+                    color: 'var(--theme-text-secondary)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                 >
                   {editingFeedId === feed.id ? (
                     <div className="flex items-center gap-2">
@@ -355,7 +445,12 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                         onChange={(e) => setEditFeedName(e.target.value)}
                         onBlur={() => handleSaveRename(feed.id)}
                         onKeyDown={(e) => handleRenameKeyDown(e, feed.id)}
-                        className="flex-1 px-1 py-0.5 text-sm border border-gray-300 focus:outline-none focus:ring-1 focus:ring-black focus:border-black"
+                        className="flex-1 px-1 py-0.5 text-sm border focus:outline-none focus:ring-1 transition-colors"
+                        style={{
+                          borderColor: 'var(--theme-border)',
+                          backgroundColor: 'var(--theme-card-bg)',
+                          color: 'var(--theme-text)',
+                        }}
                         autoFocus
                         onClick={(e) => e.stopPropagation()}
                       />
@@ -382,8 +477,12 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                     <div className="flex items-center justify-between gap-2 w-full min-w-0 relative">
                       <span 
                         className={`flex-1 truncate min-w-0 ${
-                          selectedFeedId === feed.id ? 'font-medium text-black' : ''
+                          selectedFeedId === feed.id ? 'font-medium' : ''
                         }`}
+                        style={{
+                          color: selectedFeedId === feed.id ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
+                          cursor: 'pointer',
+                        }}
                         title={feed.name}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -394,20 +493,19 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                           e.stopPropagation();
                           handleStartRename(feed);
                         }}
-                        style={{ cursor: 'pointer' }}
                       >
                         {feed.name}
                       </span>
                       <div className="flex items-center gap-1 flex-shrink-0 absolute right-0">
                         {feedInboxCounts[feed.id] !== undefined && (
                           <span 
-                            className="text-gray-400 text-xs group-hover:hidden whitespace-nowrap"
+                            className="text-xs group-hover:hidden whitespace-nowrap"
+                            style={{ color: 'var(--theme-text-muted)', cursor: 'pointer' }}
                             onClick={(e) => {
                               e.stopPropagation();
                               // Toggle selection - if already selected, deselect
                               onFeedSelect(selectedFeedId === feed.id ? null : feed.id);
                             }}
-                            style={{ cursor: 'pointer' }}
                           >
                             ({feedInboxCounts[feed.id]})
                           </span>
@@ -418,7 +516,14 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                               e.stopPropagation();
                               handleStartRename(feed);
                             }}
-                            className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                            className="transition-colors p-1"
+                            style={{ color: 'var(--theme-text-muted)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--theme-text-muted)';
+                            }}
                             title="Rename feed"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -430,7 +535,14 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                               e.stopPropagation();
                               handleRemoveFeed(feed.id);
                             }}
-                            className="text-gray-400 hover:text-red-600 transition-colors p-1 text-lg leading-none"
+                            className="transition-colors p-1 text-lg leading-none"
+                            style={{ color: 'var(--theme-text-muted)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = '#dc2626';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--theme-text-muted)';
+                            }}
                             title="Remove feed"
                           >
                             ×
@@ -445,6 +557,10 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
           </div>
         </div>
       </nav>
+      
+      <div className="p-6">
+        <ThemeToggle />
+      </div>
     </div>
   );
 }

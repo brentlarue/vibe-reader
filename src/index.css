@@ -3,15 +3,72 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Light theme (default) */
+    --theme-bg: #ffffff;
+    --theme-text: #111827;
+    --theme-text-secondary: #4b5563;
+    --theme-text-muted: #6b7280;
+    --theme-border: #e5e7eb;
+    --theme-accent: #000000;
+    --theme-hover-bg: #f9fafb;
+    --theme-card-bg: #ffffff;
+  }
+
   body {
-    @apply bg-white text-gray-900 antialiased;
+    @apply antialiased;
+    background-color: var(--theme-bg);
+    color: var(--theme-text);
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* Dark theme */
+  .theme-dark {
+    --theme-bg: #1a1a1a;
+    --theme-text: #e5e5e5;
+    --theme-text-secondary: #a3a3a3;
+    --theme-text-muted: #737373;
+    --theme-border: #404040;
+    --theme-accent: #ffffff;
+    --theme-hover-bg: #262626;
+    --theme-card-bg: #1a1a1a;
+  }
+
+  /* Sepia theme */
+  .theme-sepia {
+    --theme-bg: #f4ecd8;
+    --theme-text: #5c4033;
+    --theme-text-secondary: #6b4e3d;
+    --theme-text-muted: #8b6f47;
+    --theme-border: #d4c4a8;
+    --theme-accent: #5c4033;
+    --theme-hover-bg: #ede4d0;
+    --theme-card-bg: #f4ecd8;
+  }
+
+  /* Mint theme */
+  .theme-mint {
+    --theme-bg: #f0fdf4;
+    --theme-text: #14532d;
+    --theme-text-secondary: #166534;
+    --theme-text-muted: #15803d;
+    --theme-border: #bbf7d0;
+    --theme-accent: #14532d;
+    --theme-hover-bg: #dcfce7;
+    --theme-card-bg: #f0fdf4;
+  }
+
+  /* Sepia mode - serif font for body text */
+  .theme-sepia .article-content,
+  .theme-sepia article {
+    font-family: Georgia, 'Times New Roman', serif;
   }
 }
 
 @layer components {
   .article-content {
-    @apply text-lg text-gray-700 leading-relaxed;
+    @apply text-lg leading-relaxed;
+    color: var(--theme-text-secondary);
   }
 
   .article-content p {
@@ -19,11 +76,13 @@
   }
 
   .article-content h2 {
-    @apply text-2xl font-semibold text-gray-900 mt-12 mb-6 leading-tight tracking-tight;
+    @apply text-2xl font-semibold mt-12 mb-6 leading-tight tracking-tight;
+    color: var(--theme-text);
   }
 
   .article-content h3 {
-    @apply text-xl font-semibold text-gray-900 mt-8 mb-4 leading-tight tracking-tight;
+    @apply text-xl font-semibold mt-8 mb-4 leading-tight tracking-tight;
+    color: var(--theme-text);
   }
 
   .article-content ul,
@@ -36,6 +95,7 @@
   }
 
   .article-content a {
-    @apply text-gray-900 underline hover:no-underline;
+    color: var(--theme-text);
+    @apply underline hover:no-underline;
   }
 }

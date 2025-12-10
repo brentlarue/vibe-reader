@@ -99,7 +99,10 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-white relative">
+      <div 
+        className="flex h-screen relative"
+        style={{ backgroundColor: 'var(--theme-bg)' }}
+      >
         {!isSidebarCollapsed && (
           <Sidebar 
             feeds={feeds} 
@@ -114,7 +117,18 @@ function App() {
         {isSidebarCollapsed && (
           <button
             onClick={toggleSidebar}
-            className="group/toggle absolute left-8 top-8 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors z-10"
+            className="group/toggle absolute left-8 top-8 p-2 rounded transition-colors z-10"
+            style={{
+              color: 'var(--theme-text-muted)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-muted)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <rect x="3" y="3" width="18" height="18" rx="1" strokeWidth="2" />
