@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FeedItem } from '../types';
 import { storage } from '../utils/storage';
 import { summarizeItem } from '../services/aiSummarizer';
+import ArticleActionBar from './ArticleActionBar';
 
 export default function ArticleReader() {
   const { id } = useParams<{ id: string }>();
@@ -88,6 +89,8 @@ export default function ArticleReader() {
     );
     storage.saveFeedItems(updated);
     setItem({ ...item, status: newStatus });
+    // Trigger event for other components to update
+    window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
   };
 
   const handleDelete = () => {
@@ -219,7 +222,7 @@ export default function ArticleReader() {
 
           {isGeneratingSummary ? (
             <div 
-              className="border-l-4 pl-6 py-4 mb-6"
+              className="border-l-4 pl-6 py-4 mb-3"
               style={{ 
                 backgroundColor: 'var(--theme-hover-bg)', 
                 borderColor: 'var(--theme-accent)' 
@@ -244,7 +247,7 @@ export default function ArticleReader() {
             </div>
           ) : item.aiSummary ? (
             <div 
-              className="border-l-4 pl-6 py-4 mb-6"
+              className="border-l-4 pl-6 py-4 mb-3"
               style={{ 
                 backgroundColor: 'var(--theme-hover-bg)', 
                 borderColor: 'var(--theme-accent)' 
@@ -258,7 +261,7 @@ export default function ArticleReader() {
               </p>
             </div>
           ) : needsSummary(item) ? (
-            <div className="mb-6">
+            <div className="mb-3">
               <button
                 onClick={handleGenerateSummary}
                 disabled={isGeneratingSummary}
@@ -292,6 +295,16 @@ export default function ArticleReader() {
           ) : null}
         </header>
 
+        {/* Action bar above content */}
+        <div className="mb-12">
+          <ArticleActionBar 
+            item={item} 
+            onStatusChange={handleStatusChange} 
+            onDelete={handleDelete}
+            showBottomBorder={true}
+          />
+        </div>
+
         {hasMeaningfulContent ? (
           <div 
             className="article-content prose prose-lg max-w-none"
@@ -317,95 +330,14 @@ export default function ArticleReader() {
           </div>
         )}
 
-        <footer 
-          className="mt-12 pt-8 border-t"
-          style={{ borderColor: 'var(--theme-border)' }}
-        >
-          <div className="flex items-center gap-6">
-            <button
-              onClick={() => handleStatusChange('saved')}
-              className="transition-colors"
-              style={{
-                color: item.status === 'saved' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
-              }}
-              onMouseEnter={(e) => {
-                if (item.status !== 'saved') {
-                  e.currentTarget.style.color = 'var(--theme-text)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (item.status !== 'saved') {
-                  e.currentTarget.style.color = 'var(--theme-text-muted)';
-                }
-              }}
-              title="Later"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => handleStatusChange('bookmarked')}
-              className="transition-colors"
-              style={{
-                color: item.status === 'bookmarked' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
-              }}
-              onMouseEnter={(e) => {
-                if (item.status !== 'bookmarked') {
-                  e.currentTarget.style.color = 'var(--theme-text)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (item.status !== 'bookmarked') {
-                  e.currentTarget.style.color = 'var(--theme-text-muted)';
-                }
-              }}
-              title={item.status === 'bookmarked' ? 'Bookmarked' : 'Bookmark'}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => handleStatusChange('archived')}
-              className="transition-colors"
-              style={{
-                color: item.status === 'archived' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
-              }}
-              onMouseEnter={(e) => {
-                if (item.status !== 'archived') {
-                  e.currentTarget.style.color = 'var(--theme-text)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (item.status !== 'archived') {
-                  e.currentTarget.style.color = 'var(--theme-text-muted)';
-                }
-              }}
-              title={item.status === 'archived' ? 'Archived' : 'Archive'}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-            </button>
-            <button
-              onClick={handleDelete}
-              className="transition-colors"
-              style={{ color: 'var(--theme-text-muted)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = '#dc2626';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--theme-text-muted)';
-              }}
-              title="Delete"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </div>
-        </footer>
+        {/* Action bar below content */}
+        <div className="mt-8">
+          <ArticleActionBar 
+            item={item} 
+            onStatusChange={handleStatusChange} 
+            onDelete={handleDelete} 
+          />
+        </div>
       </article>
     </div>
   );
