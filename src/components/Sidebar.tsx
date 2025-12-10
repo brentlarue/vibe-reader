@@ -531,7 +531,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                           color: selectedFeedId === feed.id ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
                           cursor: 'pointer',
                         }}
-                        title={feed.name}
+                        title={feed.url.replace(/^https?:\/\//, '')}
                         onClick={(e) => {
                           e.stopPropagation();
                           // Toggle selection - if already selected, deselect
