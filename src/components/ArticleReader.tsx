@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FeedItem } from '../types';
 import { storage } from '../utils/storage';
 import { summarizeItem } from '../services/aiSummarizer';
+import { generateAIFeature, AIFeatureType } from '../services/aiFeatures';
 import ArticleActionBar from './ArticleActionBar';
 
 export default function ArticleReader() {
@@ -11,6 +12,18 @@ export default function ArticleReader() {
   const [item, setItem] = useState<FeedItem | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const summaryGenerationInProgress = useRef<string | null>(null);
+  
+  // State for AI features
+  const [generatingFeature, setGeneratingFeature] = useState<AIFeatureType | null>(null);
+  const [aiFeatureResults, setAiFeatureResults] = useState<{
+    'insightful-reply': string | null;
+    'investor-analysis': string | null;
+    'founder-implications': string | null;
+  }>({
+    'insightful-reply': null,
+    'investor-analysis': null,
+    'founder-implications': null,
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -63,6 +76,14 @@ export default function ArticleReader() {
     // Always get the latest item from storage to ensure we have the most up-to-date version
     const latestItem = storage.getFeedItem(found.id) || found;
     setItem(latestItem);
+    // Reset AI feature results when article changes
+    setAiFeatureResults({
+      'insightful-reply': null,
+      'investor-analysis': null,
+      'founder-implications': null,
+    });
+    setGeneratingFeature(null);
+    summaryGenerationInProgress.current = null;
   }, [id]);
 
   if (!item) {
@@ -187,6 +208,219 @@ export default function ArticleReader() {
         }
         setIsGeneratingSummary(false);
       });
+  };
+
+  const handleGenerateAIFeature = async (featureType: AIFeatureType) => {
+    if (!item || generatingFeature) {
+      return;
+    }
+
+    setGeneratingFeature(featureType);
+    
+    try {
+      const result = await generateAIFeature(item, featureType);
+      setAiFeatureResults(prev => ({
+        ...prev,
+        [featureType]: result
+      }));
+    } catch (error) {
+      console.error(`Error generating ${featureType}:`, error);
+      // Optionally show error to user
+    } finally {
+      setGeneratingFeature(null);
+    }
+  };
+
+  // Helper function to convert markdown to HTML
+  const markdownToHtml = (text: string, removeNumbering: boolean = false, removeBold: boolean = false, noLists: boolean = false, listNoBullets: boolean = false, boldHeaderColor: boolean = false): string => {
+    if (!text) return '';
+    
+    let html = text;
+    
+    // Remove numbering from section headers if requested (e.g., "1. **Section:**" or "1. ### Section")
+    if (removeNumbering) {
+      // Remove numbering from lines like "1. **Section:**" or "1. ### Section"
+      html = html.replace(/^\d+\.\s+/gm, '');
+    }
+    
+    // Process line by line to handle different markdown elements
+    const lines = html.split('\n');
+    const result: string[] = [];
+    let inList = false;
+    let listItems: string[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+      
+      if (!line) {
+        // Empty line - close list if open, add paragraph break
+        if (inList && listItems.length > 0) {
+          const ulStyle = listNoBullets 
+            ? 'margin-bottom: 1rem; padding-left: 0; list-style: none;' 
+            : 'margin-bottom: 1rem; padding-left: 1.5rem; list-style-type: disc;';
+          result.push(`<ul style="${ulStyle}">${listItems.join('')}</ul>`);
+          listItems = [];
+          inList = false;
+        }
+        continue;
+      }
+      
+      // Check if it's a header (starts with ### or ## or #)
+      const headerMatch = line.match(/^(#{1,3})\s+(.+)$/);
+      if (headerMatch) {
+        // Close list if open
+        if (inList && listItems.length > 0) {
+          const ulStyle = listNoBullets 
+            ? 'margin-bottom: 1rem; padding-left: 0; list-style: none;' 
+            : 'margin-bottom: 1rem; padding-left: 1.5rem; list-style-type: disc;';
+          result.push(`<ul style="${ulStyle}">${listItems.join('')}</ul>`);
+          listItems = [];
+          inList = false;
+        }
+        
+        const level = headerMatch[1].length;
+        let title = headerMatch[2].trim();
+        // Remove trailing colon from header
+        title = title.replace(/:\s*$/, '');
+        // Convert **bold** in header title to <strong>
+        title = title.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+        result.push(`<h${level} style="font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--theme-text); font-size: ${level === 1 ? '1.5' : level === 2 ? '1.25' : '1.125'}rem;">${title}</h${level}>`);
+        continue;
+      }
+      
+      // Check for bold text at start of line (like "**Section:**")
+      const boldHeaderMatch = line.match(/^\*\*([^*:]+?):?\*\*\s*$/);
+      if (boldHeaderMatch) {
+        // Close list if open
+        if (inList && listItems.length > 0) {
+          const ulStyle = listNoBullets 
+            ? 'margin-bottom: 1rem; padding-left: 0; list-style: none;' 
+            : 'margin-bottom: 1rem; padding-left: 1.5rem; list-style-type: disc;';
+          result.push(`<ul style="${ulStyle}">${listItems.join('')}</ul>`);
+          listItems = [];
+          inList = false;
+        }
+        // Treat as a header (h3)
+        const title = boldHeaderMatch[1].trim();
+        result.push(`<h3 style="font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--theme-text); font-size: 1.125rem;">${title}</h3>`);
+        continue;
+      }
+      
+      // Skip list processing if noLists is true - convert list items to paragraphs
+      if (noLists) {
+        // Check for numbered list items - convert to paragraphs
+        const numberedListMatch = line.match(/^\d+\.\s+(.+)$/);
+        if (numberedListMatch) {
+          let itemContent = numberedListMatch[1].trim();
+          // Convert **bold** to <strong> in paragraphs (unless removeBold is true)
+          if (!removeBold) {
+            if (boldHeaderColor) {
+              // Use header color for bold text
+              itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '<strong style="color: var(--theme-text);">$1</strong>');
+            } else {
+              itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+            }
+          } else {
+            // Remove bold markdown but keep the text
+            itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '$1');
+          }
+          result.push(`<p style="margin-bottom: 1rem; line-height: 1.625;">${itemContent}</p>`);
+          continue;
+        }
+        
+        // Check for markdown list items (starting with - or * or •) - convert to paragraphs
+        const listMatch = line.match(/^[\-\*•]\s+(.+)$/);
+        if (listMatch) {
+          let itemContent = listMatch[1].trim();
+          // Convert **bold** to <strong> in paragraphs (unless removeBold is true)
+          if (!removeBold) {
+            if (boldHeaderColor) {
+              // Use header color for bold text
+              itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '<strong style="color: var(--theme-text);">$1</strong>');
+            } else {
+              itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+            }
+          } else {
+            // Remove bold markdown but keep the text
+            itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '$1');
+          }
+          result.push(`<p style="margin-bottom: 1rem; line-height: 1.625;">${itemContent}</p>`);
+          continue;
+        }
+      } else {
+        // Check for numbered list items - convert to bulleted lists
+        const numberedListMatch = line.match(/^\d+\.\s+(.+)$/);
+        if (numberedListMatch) {
+          inList = true;
+          let itemContent = numberedListMatch[1].trim();
+          // Convert **bold** to <strong> in list items (unless removeBold is true)
+          if (!removeBold) {
+            itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+          } else {
+            // Remove bold markdown but keep the text
+            itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '$1');
+          }
+          const listStyle = listNoBullets 
+            ? 'margin-bottom: 0.5rem; line-height: 1.625; list-style: none; padding-left: 0;' 
+            : 'margin-bottom: 0.5rem; line-height: 1.625;';
+          listItems.push(`<li style="${listStyle}">${itemContent}</li>`);
+          continue;
+        }
+        
+        // Check for markdown list items (starting with - or * or •)
+        const listMatch = line.match(/^[\-\*•]\s+(.+)$/);
+        if (listMatch) {
+          inList = true;
+          let itemContent = listMatch[1].trim();
+          // Convert **bold** to <strong> in list items (unless removeBold is true)
+          if (!removeBold) {
+            itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+          } else {
+            // Remove bold markdown but keep the text
+            itemContent = itemContent.replace(/\*\*([^*]+?)\*\*/g, '$1');
+          }
+          const listStyle = listNoBullets 
+            ? 'margin-bottom: 0.5rem; line-height: 1.625; list-style: none; padding-left: 0;' 
+            : 'margin-bottom: 0.5rem; line-height: 1.625;';
+          listItems.push(`<li style="${listStyle}">${itemContent}</li>`);
+          continue;
+        }
+      }
+      
+      // Close list if we hit a non-list line
+      if (inList && listItems.length > 0) {
+        const ulStyle = listNoBullets 
+          ? 'margin-bottom: 1rem; padding-left: 0; list-style: none;' 
+          : 'margin-bottom: 1rem; padding-left: 1.5rem; list-style-type: disc;';
+        result.push(`<ul style="${ulStyle}">${listItems.join('')}</ul>`);
+        listItems = [];
+        inList = false;
+      }
+      
+      // Regular paragraph line - convert **bold** to <strong> (unless removeBold is true)
+      if (!removeBold) {
+        if (boldHeaderColor) {
+          // Use header color for bold text
+          line = line.replace(/\*\*([^*]+?)\*\*/g, '<strong style="color: var(--theme-text);">$1</strong>');
+        } else {
+          line = line.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+        }
+      } else {
+        // Remove bold markdown but keep the text
+        line = line.replace(/\*\*([^*]+?)\*\*/g, '$1');
+      }
+      result.push(`<p style="margin-bottom: 1rem; line-height: 1.625;">${line}</p>`);
+    }
+    
+    // Close any remaining list
+    if (inList && listItems.length > 0) {
+      const ulStyle = listNoBullets 
+        ? 'margin-bottom: 1rem; padding-left: 0; list-style: none;' 
+        : 'margin-bottom: 1rem; padding-left: 1.5rem; list-style-type: disc;';
+      result.push(`<ul style="${ulStyle}">${listItems.join('')}</ul>`);
+    }
+    
+    return result.join('\n');
   };
 
   // Get content - prefer fullContent, fallback to contentSnippet
@@ -356,6 +590,172 @@ export default function ArticleReader() {
                 )}
               </p>
             )}
+          </div>
+        )}
+
+        {/* AI Features Row */}
+        <div className="flex items-center gap-3 mb-6 flex-wrap mt-8">
+          <button
+            onClick={() => handleGenerateAIFeature('insightful-reply')}
+            disabled={!!generatingFeature}
+            className="text-sm border px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            style={{
+              borderColor: 'var(--theme-border)',
+              backgroundColor: generatingFeature === 'insightful-reply' ? 'var(--theme-hover-bg)' : 'transparent',
+              color: 'var(--theme-text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              if (!generatingFeature) {
+                e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                e.currentTarget.style.color = 'var(--theme-text)';
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!generatingFeature) {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+                e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                e.currentTarget.style.backgroundColor = generatingFeature === 'insightful-reply' ? 'var(--theme-hover-bg)' : 'transparent';
+              }
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            {generatingFeature === 'insightful-reply' ? 'Generating...' : 'Insightful Reply'}
+          </button>
+          <button
+            onClick={() => handleGenerateAIFeature('investor-analysis')}
+            disabled={!!generatingFeature}
+            className="text-sm border px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            style={{
+              borderColor: 'var(--theme-border)',
+              backgroundColor: generatingFeature === 'investor-analysis' ? 'var(--theme-hover-bg)' : 'transparent',
+              color: 'var(--theme-text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              if (!generatingFeature) {
+                e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                e.currentTarget.style.color = 'var(--theme-text)';
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!generatingFeature) {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+                e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                e.currentTarget.style.backgroundColor = generatingFeature === 'investor-analysis' ? 'var(--theme-hover-bg)' : 'transparent';
+              }
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            {generatingFeature === 'investor-analysis' ? 'Generating...' : 'Investor Analysis'}
+          </button>
+          <button
+            onClick={() => handleGenerateAIFeature('founder-implications')}
+            disabled={!!generatingFeature}
+            className="text-sm border px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            style={{
+              borderColor: 'var(--theme-border)',
+              backgroundColor: generatingFeature === 'founder-implications' ? 'var(--theme-hover-bg)' : 'transparent',
+              color: 'var(--theme-text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              if (!generatingFeature) {
+                e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                e.currentTarget.style.color = 'var(--theme-text)';
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!generatingFeature) {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+                e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                e.currentTarget.style.backgroundColor = generatingFeature === 'founder-implications' ? 'var(--theme-hover-bg)' : 'transparent';
+              }
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            {generatingFeature === 'founder-implications' ? 'Generating...' : 'Founder Implications'}
+          </button>
+        </div>
+
+        {/* Display AI Feature Results */}
+        {aiFeatureResults['insightful-reply'] && (
+          <div 
+            className="border-l-4 pl-6 py-4 mb-6"
+            style={{ 
+              backgroundColor: 'var(--theme-hover-bg)', 
+              borderColor: 'var(--theme-accent)',
+              overflow: 'visible',
+              maxHeight: 'none',
+              height: 'auto'
+            }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--theme-text-muted)' }}>Insightful Reply</p>
+            <p 
+              className="text-base m-0 whitespace-pre-wrap break-words"
+              style={{ 
+                color: 'var(--theme-text-secondary)',
+                overflow: 'visible',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word'
+              }}
+            >
+              {aiFeatureResults['insightful-reply'].replace(/["']/g, '').replace(/#\w+/g, '')}
+            </p>
+          </div>
+        )}
+        {aiFeatureResults['investor-analysis'] && (
+          <div 
+            className="border-l-4 pl-6 py-4 mb-6"
+            style={{ 
+              backgroundColor: 'var(--theme-hover-bg)', 
+              borderColor: 'var(--theme-accent)',
+              overflow: 'visible',
+              maxHeight: 'none',
+              height: 'auto'
+            }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--theme-text-muted)' }}>Investor Analysis</p>
+            <div 
+              className="text-base break-words"
+              style={{ 
+                color: 'var(--theme-text-secondary)',
+                overflow: 'visible',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word'
+              }}
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(aiFeatureResults['investor-analysis'], true, true, true, false) }}
+            />
+          </div>
+        )}
+        {aiFeatureResults['founder-implications'] && (
+          <div 
+            className="border-l-4 pl-6 py-4 mb-6"
+            style={{ 
+              backgroundColor: 'var(--theme-hover-bg)', 
+              borderColor: 'var(--theme-accent)',
+              overflow: 'visible',
+              maxHeight: 'none',
+              height: 'auto'
+            }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--theme-text-muted)' }}>Founder Implications</p>
+            <div 
+              className="text-base break-words"
+              style={{ 
+                color: 'var(--theme-text-secondary)',
+                overflow: 'visible',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word'
+              }}
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(aiFeatureResults['founder-implications'], false, false, false, true, true) }}
+            />
           </div>
         )}
 
