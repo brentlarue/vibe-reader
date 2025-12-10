@@ -121,6 +121,10 @@ export default function ArticleReader() {
     
     summarizeItem(item)
       .then((summary) => {
+        // Debug: Log summary before storing
+        console.log('AI summary before storing - Length (characters):', summary.length);
+        console.log('AI summary full text:', summary);
+        
         // Always get the latest from storage before updating
         const items = storage.getFeedItems();
         const currentItem = items.find(i => i.id === item.id);
@@ -134,6 +138,13 @@ export default function ArticleReader() {
           );
           storage.saveFeedItems(updated);
           const updatedItem = updated.find(i => i.id === item.id);
+          
+          // Debug: Log what we're storing
+          if (updatedItem) {
+            console.log('AI summary stored in item - Length (characters):', (updatedItem.aiSummary || '').length);
+            console.log('AI summary stored text:', updatedItem.aiSummary);
+          }
+          
           if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
             setItem(updatedItem);
           }
@@ -250,12 +261,30 @@ export default function ArticleReader() {
               className="border-l-4 pl-6 py-4 mb-3"
               style={{ 
                 backgroundColor: 'var(--theme-hover-bg)', 
-                borderColor: 'var(--theme-accent)' 
+                borderColor: 'var(--theme-accent)',
+                overflow: 'visible',
+                maxHeight: 'none',
+                height: 'auto',
+                minHeight: 'auto'
               }}
             >
+              {/* Debug: Log what's being rendered */}
+              {(() => {
+                console.log('Rendering AI summary - Length (characters):', (item.aiSummary || '').length);
+                return null;
+              })()}
               <p 
-                className="text-base m-0"
-                style={{ color: 'var(--theme-text-secondary)' }}
+                className="text-base m-0 whitespace-pre-wrap break-words"
+                style={{ 
+                  color: 'var(--theme-text-secondary)',
+                  overflow: 'visible',
+                  textOverflow: 'clip',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  maxHeight: 'none',
+                  height: 'auto',
+                  display: 'block'
+                }}
               >
                 {item.aiSummary}
               </p>

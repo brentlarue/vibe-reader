@@ -48,6 +48,10 @@ export async function summarizeItem(item: FeedItem): Promise<string> {
       throw new Error('No summary returned from API');
     }
 
+    // Debug: Log the full summary received from API
+    console.log('AI summary received from API - Length (characters):', summary.length);
+    console.log('AI summary full text:', summary);
+
     return summary;
   } catch (error) {
     console.error('Error generating AI summary:', error);
