@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white text-gray-900 antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  }
+}
+
+@layer components {
+  .article-content {
+    @apply text-lg text-gray-700 leading-relaxed;
+  }
+
+  .article-content p {
+    @apply mb-6;
+  }
+
+  .article-content h2 {
+    @apply text-2xl font-semibold text-gray-900 mt-12 mb-6 leading-tight tracking-tight;
+  }
+
+  .article-content h3 {
+    @apply text-xl font-semibold text-gray-900 mt-8 mb-4 leading-tight tracking-tight;
+  }
+
+  .article-content ul,
+  .article-content ol {
+    @apply mb-6 pl-6;
+  }
+
+  .article-content li {
+    @apply mb-2;
+  }
+
+  .article-content a {
+    @apply text-gray-900 underline hover:no-underline;
+  }
+}

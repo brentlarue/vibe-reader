@@ -1,0 +1,199 @@
+import { FeedItem, Feed } from '../types';
+import FeedItemCard from './FeedItemCard';
+import { useState, useEffect, useCallback } from 'react';
+import { storage } from '../utils/storage';
+
+interface FeedListProps {
+  status: FeedItem['status'];
+  selectedFeedId: string | null;
+  feeds: Feed[];
+}
+
+type SortOrder = 'newest' | 'oldest';
+
+export default function FeedList({ status, selectedFeedId, feeds }: FeedListProps) {
+  const [items, setItems] = useState<FeedItem[]>([]);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+
+  // Helper to normalize hostname for comparison
+  const normalizeHostname = (url: string): string | null => {
+    try {
+      const urlObj = new URL(url);
+      let hostname = urlObj.hostname.toLowerCase();
+      if (hostname.startsWith('www.')) {
+        hostname = hostname.substring(4);
+      }
+      return hostname;
+    } catch {
+      return null;
+    }
+  };
+
+  const loadItems = useCallback(() => {
+    const allItems = storage.getFeedItems();
+    let filtered = allItems.filter((item) => item.status === status);
+    
+    // Filter by selected feed if one is selected
+    if (selectedFeedId) {
+      const selectedFeed = feeds.find(f => f.id === selectedFeedId);
+      if (selectedFeed) {
+        const feedHostname = normalizeHostname(selectedFeed.url);
+        
+        filtered = filtered.filter((item) => {
+          // Try multiple matching strategies:
+          // 1. Match by source field (item.source) to rssTitle - most reliable
+          //    rssTitle is the original RSS feed title that matches item.source and never changes
+          //    This works even after the user renames the feed
+          if (selectedFeed.rssTitle && item.source === selectedFeed.rssTitle) {
+            return true;
+          }
+          
+          // 1b. Fallback: If rssTitle is not set (for old feeds), try matching by name
+          //    This handles backwards compatibility with feeds added before rssTitle was introduced
+          if (!selectedFeed.rssTitle && item.source === selectedFeed.name) {
+            return true;
+          }
+          
+          // 2. For Medium feeds, items might be cross-posted to different domains
+          //    Check if the feed URL path matches the item URL path
+          if (feedHostname === 'medium.com') {
+            try {
+              const feedUrl = new URL(selectedFeed.url);
+              const feedPath = feedUrl.pathname.toLowerCase();
+              // Extract author from feed path (e.g., /feed/@101)
+              if (feedPath.includes('/feed/')) {
+                const authorPart = feedPath.split('/feed/')[1];
+                if (authorPart) {
+                  // Check if item URL contains this author identifier
+                  const itemUrl = new URL(item.url);
+                  if (itemUrl.pathname.toLowerCase().includes(authorPart)) {
+                    return true;
+                  }
+                }
+              }
+            } catch {
+              // If URL parsing fails, continue to next check
+            }
+          }
+          
+          // 3. Fallback to hostname matching for other feeds
+          const itemHostname = normalizeHostname(item.url);
+          return feedHostname && itemHostname && feedHostname === itemHostname;
+        });
+      }
+    }
+    
+    // Sort items by published date
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.publishedAt).getTime();
+      const dateB = new Date(b.publishedAt).getTime();
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+    
+    setItems(filtered);
+  }, [status, sortOrder, selectedFeedId, feeds]);
+
+  useEffect(() => {
+    loadItems();
+
+    // Listen for feed items updates
+    const handleItemsUpdate = () => {
+      loadItems();
+    };
+    window.addEventListener('feedItemsUpdated', handleItemsUpdate);
+
+    return () => {
+      window.removeEventListener('feedItemsUpdated', handleItemsUpdate);
+    };
+  }, [loadItems]);
+
+  const handleStatusChange = () => {
+    loadItems();
+  };
+
+  const handleDeleteAll = () => {
+    if (status === 'archived') {
+      if (confirm('Are you sure you want to delete all archived items? This action cannot be undone.')) {
+        const allItems = storage.getFeedItems();
+        const filtered = allItems.filter(item => item.status !== 'archived');
+        storage.saveFeedItems(filtered);
+        loadItems();
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      }
+    }
+  };
+
+  const getStatusLabel = (status: FeedItem['status']) => {
+    switch (status) {
+      case 'inbox':
+        return 'Inbox';
+      case 'saved':
+        return 'Later';
+      case 'bookmarked':
+        return 'Bookmarks';
+      case 'archived':
+        return 'Archive';
+      default:
+        return status;
+    }
+  };
+
+  if (items.length === 0) {
+    const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
+    return (
+      <div className="flex items-center justify-center h-full text-gray-500">
+        <div className="text-center">
+          <p className="text-lg mb-2 font-medium">No items found</p>
+          <p className="text-sm text-gray-400">
+            {selectedFeed 
+              ? `No items from "${selectedFeed.name}" with status "${getStatusLabel(status)}"`
+              : `Items with status "${getStatusLabel(status)}" will appear here`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        {status === 'archived' && items.length > 0 && (
+          <button
+            onClick={handleDeleteAll}
+            className="text-sm text-red-600 hover:text-red-700 font-medium transition-colors"
+          >
+            Delete all
+          </button>
+        )}
+        <div className="flex items-center gap-2 pr-4 ml-auto">
+          <label htmlFor="sort-order" className="text-sm text-gray-600">
+            Sort:
+          </label>
+          <div className="relative">
+            <select
+              id="sort-order"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+              className="text-sm border border-gray-300 pl-2 pr-6 py-1.5 text-gray-700 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-colors appearance-none"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+      {items.map((item) => (
+        <FeedItemCard
+          key={item.id}
+          item={item}
+          onStatusChange={handleStatusChange}
+        />
+      ))}
+    </div>
+  );
+}
