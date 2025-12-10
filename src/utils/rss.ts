@@ -140,12 +140,9 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
     // Get feed title or use hostname
     const feedTitle = data.feed?.title || formatUrlAsTitle(feedUrl);
 
-    // Create sets for deduplication
-    const existingUrls = new Set(existingItems.map(item => item.url).filter(Boolean));
-    const existingIds = new Set(existingItems.map(item => item.id));
-
-    // Map rss2json items to FeedItems
-    const feedItems: FeedItem[] = data.items
+    // Map all rss2json items to FeedItems first (before deduplication)
+    // This allows us to sort by date and take the 5 most recent, then filter duplicates
+    const allFeedItems: FeedItem[] = data.items
       .map((item: any, index: number) => {
         // Extract stable ID - prioritize guid if it exists and is non-empty, otherwise use link
         const guid = item.guid && item.guid.trim() ? item.guid.trim() : null;
@@ -171,11 +168,6 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
         // Log ID generation for debugging
         if (!guid && url) {
           console.log('Generated ID from URL:', { originalUrl: url, id: id.substring(0, 100) });
-        }
-
-        // Skip if duplicate - check both by ID and by URL
-        if (existingIds.has(id) || (url && existingUrls.has(url)) || (guid && existingIds.has(guid))) {
-          return null;
         }
 
         // Parse date
@@ -225,23 +217,38 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
         }
 
         return feedItem;
-      })
-      .filter((item: FeedItem | null) => item !== null) as FeedItem[];
+      });
 
     // Sort by publishedAt descending (newest first)
-    feedItems.sort((a, b) => {
+    allFeedItems.sort((a, b) => {
       const dateA = new Date(a.publishedAt).getTime();
       const dateB = new Date(b.publishedAt).getTime();
       return dateB - dateA;
     });
 
-    // Limit to 5 most recent
-    const limitedItems = feedItems.slice(0, 5);
+    // Take the 5 most recent items from the feed first
+    const top5Items = allFeedItems.slice(0, 5);
 
-    console.log('Fetched', limitedItems.length, 'items from', feedUrl);
+    // Create sets for deduplication - check against ALL existing items (regardless of status)
+    // This ensures we respect posts that have been moved to different views
+    const existingUrls = new Set(existingItems.map(item => item.url).filter(Boolean));
+    const existingIds = new Set(existingItems.map(item => item.id));
+
+    // Filter out duplicates from the top 5 - only return items that don't exist yet
+    // This ensures we always get the 5 most recent posts, but skip ones we already have
+    const feedItems = top5Items.filter(item => {
+      // Skip if duplicate - check both by ID and by URL
+      // This respects items in any status (inbox, saved, bookmarked, archived)
+      const isDuplicate = existingIds.has(item.id) || 
+                         (item.url && existingUrls.has(item.url)) ||
+                         (item.id && existingIds.has(item.id));
+      return !isDuplicate;
+    });
+
+    console.log('Fetched', feedItems.length, 'items from', feedUrl, `(checked top 5 most recent, ${top5Items.length - feedItems.length} were duplicates)`);
 
     return {
-      items: limitedItems,
+      items: feedItems,
       feedTitle: feedTitle
     };
   } catch (error) {
