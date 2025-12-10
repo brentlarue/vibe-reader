@@ -278,12 +278,22 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         className="p-8 border-b flex items-center justify-between"
         style={{ borderColor: 'var(--theme-border)' }}
       >
-        <h1 
-          className="text-2xl font-semibold tracking-tight"
+        <Link
+          to="/inbox"
+          onClick={() => {
+            // Clear feed selection
+            onFeedSelect(null);
+            // Scroll to top
+            const main = document.querySelector('main');
+            if (main) {
+              main.scrollTop = 0;
+            }
+          }}
+          className="text-2xl font-semibold tracking-tight cursor-pointer"
           style={{ color: 'var(--theme-text)' }}
         >
           The Signal
-        </h1>
+        </Link>
         <button
           onClick={onToggle}
           className="group/toggle relative p-2 rounded transition-colors"
