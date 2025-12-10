@@ -62,80 +62,6 @@ export default function ArticleReader() {
     // Always get the latest item from storage to ensure we have the most up-to-date version
     const latestItem = storage.getFeedItem(found.id) || found;
     setItem(latestItem);
-    
-    // Helper function to check if summary needs to be generated
-    const needsSummary = (item: FeedItem): boolean => {
-      // Check if summary is missing, undefined, empty, or is the error message
-      return !item.aiSummary || 
-             item.aiSummary.trim() === '' || 
-             item.aiSummary === 'Summary not available.';
-    };
-    
-    // Generate summary if it doesn't exist and we're not already generating for this item
-    if (needsSummary(latestItem) && summaryGenerationInProgress.current !== latestItem.id) {
-      summaryGenerationInProgress.current = latestItem.id;
-      setIsGeneratingSummary(true);
-      
-      summarizeItem(latestItem)
-        .then((summary) => {
-          // Always get the latest from storage before updating
-          const items = storage.getFeedItems();
-          const currentItem = items.find(i => i.id === latestItem.id);
-          
-          // Only update if summary is still missing (prevent overwriting if user navigated away and back)
-          // Also check if we're still on the same article page
-          const currentRouteId = id ? decodeURIComponent(id) : null;
-          if (currentItem && needsSummary(currentItem) && 
-              (currentRouteId === latestItem.id || currentRouteId === latestItem.url || id === latestItem.id)) {
-            const updated = items.map((i) =>
-              i.id === latestItem.id ? { ...i, aiSummary: summary } : i
-            );
-            storage.saveFeedItems(updated);
-            const updatedItem = updated.find(i => i.id === latestItem.id);
-            if (updatedItem) {
-              setItem(updatedItem);
-            }
-          }
-        })
-        .catch((error) => {
-          console.error('Error generating summary:', error);
-          console.error('Error details:', {
-            message: error?.message || 'Unknown error',
-            stack: error?.stack,
-            itemId: latestItem?.id,
-            itemTitle: latestItem?.title,
-          });
-          
-          // Check if backend is not running
-          if (error instanceof TypeError && error.message.includes('fetch')) {
-            console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
-          }
-          
-          // Only set fallback if summary is still missing
-          // Also check if we're still on the same article page
-          const items = storage.getFeedItems();
-          const currentItem = items.find(i => i.id === latestItem.id);
-          const currentRouteId = id ? decodeURIComponent(id) : null;
-          if (currentItem && needsSummary(currentItem) &&
-              (currentRouteId === latestItem.id || currentRouteId === latestItem.url || id === latestItem.id)) {
-            const updated = items.map((i) =>
-              i.id === latestItem.id ? { ...i, aiSummary: 'Summary not available.' } : i
-            );
-            storage.saveFeedItems(updated);
-            const updatedItem = updated.find(i => i.id === latestItem.id);
-            if (updatedItem) {
-              setItem(updatedItem);
-            }
-          }
-        })
-        .finally(() => {
-          // Only clear if this is still the current item being processed
-          if (summaryGenerationInProgress.current === latestItem.id) {
-            summaryGenerationInProgress.current = null;
-          }
-          setIsGeneratingSummary(false);
-        });
-    }
   }, [id]);
 
   if (!item) {
@@ -172,6 +98,81 @@ export default function ArticleReader() {
       // Trigger event for other components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
     }
+  };
+
+  // Helper function to check if summary needs to be generated
+  const needsSummary = (item: FeedItem): boolean => {
+    // Check if summary is missing, undefined, empty, or is the error message
+    return !item.aiSummary || 
+           item.aiSummary.trim() === '' || 
+           item.aiSummary === 'Summary not available.';
+  };
+
+  const handleGenerateSummary = () => {
+    if (!item || isGeneratingSummary || summaryGenerationInProgress.current === item.id) {
+      return;
+    }
+
+    summaryGenerationInProgress.current = item.id;
+    setIsGeneratingSummary(true);
+    
+    summarizeItem(item)
+      .then((summary) => {
+        // Always get the latest from storage before updating
+        const items = storage.getFeedItems();
+        const currentItem = items.find(i => i.id === item.id);
+        
+        // Only update if summary is still missing and we're still on the same article
+        const currentRouteId = id ? decodeURIComponent(id) : null;
+        if (currentItem && needsSummary(currentItem) && 
+            (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+          const updated = items.map((i) =>
+            i.id === item.id ? { ...i, aiSummary: summary } : i
+          );
+          storage.saveFeedItems(updated);
+          const updatedItem = updated.find(i => i.id === item.id);
+          if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+            setItem(updatedItem);
+          }
+        }
+      })
+      .catch((error) => {
+        console.error('Error generating summary:', error);
+        console.error('Error details:', {
+          message: error?.message || 'Unknown error',
+          stack: error?.stack,
+          itemId: item?.id,
+          itemTitle: item?.title,
+        });
+        
+        // Check if backend is not running
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
+        }
+        
+        // Only set fallback if summary is still missing and we're still on the same article
+        const items = storage.getFeedItems();
+        const currentItem = items.find(i => i.id === item.id);
+        const currentRouteId = id ? decodeURIComponent(id) : null;
+        if (currentItem && needsSummary(currentItem) &&
+            (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+          const updated = items.map((i) =>
+            i.id === item.id ? { ...i, aiSummary: 'Summary not available.' } : i
+          );
+          storage.saveFeedItems(updated);
+          const updatedItem = updated.find(i => i.id === item.id);
+          if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+            setItem(updatedItem);
+          }
+        }
+      })
+      .finally(() => {
+        // Only clear if this is still the current item being processed
+        if (summaryGenerationInProgress.current === item.id) {
+          summaryGenerationInProgress.current = null;
+        }
+        setIsGeneratingSummary(false);
+      });
   };
 
   // Get content - prefer fullContent, fallback to contentSnippet
@@ -255,6 +256,38 @@ export default function ArticleReader() {
               >
                 {item.aiSummary}
               </p>
+            </div>
+          ) : needsSummary(item) ? (
+            <div className="mb-6">
+              <button
+                onClick={handleGenerateSummary}
+                disabled={isGeneratingSummary}
+                className="text-sm border px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                style={{
+                  borderColor: 'var(--theme-border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--theme-text-secondary)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isGeneratingSummary) {
+                    e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                    e.currentTarget.style.color = 'var(--theme-text)';
+                    e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isGeneratingSummary) {
+                    e.currentTarget.style.borderColor = 'var(--theme-border)';
+                    e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                Generate AI Summary
+              </button>
             </div>
           ) : null}
         </header>

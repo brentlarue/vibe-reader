@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
 import ThemeToggle from './ThemeToggle';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SidebarProps {
   feeds: Feed[];
@@ -16,6 +17,7 @@ interface SidebarProps {
 
 export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  const { theme } = useTheme();
   const [feedUrl, setFeedUrl] = useState('');
   const [isAddingFeed, setIsAddingFeed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -380,7 +382,13 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                   setError(null);
                 }}
                 placeholder="RSS feed URL"
-                className="flex-1 px-2 py-1.5 text-xs border focus:outline-none transition-colors"
+                className={`flex-1 px-2 py-1.5 text-xs border focus:outline-none transition-colors ${
+                  theme === 'light' ? 'placeholder:text-gray-400' :
+                  theme === 'dark' ? 'placeholder:text-gray-400' :
+                  theme === 'sepia' ? 'placeholder:[color:#8B7355]' :
+                  theme === 'mint' ? 'placeholder:[color:#6B8F7A]' :
+                  'placeholder:text-gray-400'
+                }`}
                 style={{
                   borderColor: 'var(--theme-border)',
                   backgroundColor: 'var(--theme-card-bg)',
@@ -459,7 +467,13 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                           handleSaveRename(feed.id);
                         }}
                         onKeyDown={(e) => handleRenameKeyDown(e, feed.id)}
-                        className="flex-1 px-1 py-0.5 text-sm border focus:outline-none transition-colors"
+                        className={`flex-1 px-1 py-0.5 text-sm border focus:outline-none transition-colors ${
+                          theme === 'light' ? 'placeholder:text-gray-400' :
+                          theme === 'dark' ? 'placeholder:text-gray-400' :
+                          theme === 'sepia' ? 'placeholder:[color:#8B7355]' :
+                          theme === 'mint' ? 'placeholder:[color:#6B8F7A]' :
+                          'placeholder:text-gray-400'
+                        }`}
                         style={{
                           borderColor: 'var(--theme-border)',
                           backgroundColor: 'var(--theme-card-bg)',

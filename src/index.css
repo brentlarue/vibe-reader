@@ -75,15 +75,6 @@
   .theme-sepia article {
     font-family: Georgia, 'Times New Roman', serif;
   }
-
-  /* Placeholder styling */
-  input::placeholder,
-  input::-webkit-input-placeholder,
-  input::-moz-placeholder,
-  input:-ms-input-placeholder {
-    color: var(--theme-placeholder);
-    opacity: 1;
-  }
 }
 
 @layer components {
