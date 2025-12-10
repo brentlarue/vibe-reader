@@ -402,8 +402,8 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                 disabled={isAddingFeed}
                 className="px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed transition-colors"
                 style={{
-                  backgroundColor: 'var(--theme-button-bg)',
-                  color: 'var(--theme-button-text)',
+                  backgroundColor: isAddingFeed ? 'var(--theme-border)' : 'var(--theme-button-bg)',
+                  color: isAddingFeed ? 'var(--theme-text-muted)' : 'var(--theme-button-text)',
                 }}
                 onMouseEnter={(e) => {
                   if (!isAddingFeed) {

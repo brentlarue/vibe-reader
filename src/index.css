@@ -9,6 +9,7 @@
     --theme-text: #111827;
     --theme-text-secondary: #4b5563;
     --theme-text-muted: #6b7280;
+    --theme-placeholder: #9ca3af;
     --theme-border: #e5e7eb;
     --theme-accent: #000000;
     --theme-hover-bg: #f9fafb;
@@ -30,11 +31,12 @@
     --theme-text: #ffffff;
     --theme-text-secondary: #ffffff;
     --theme-text-muted: #a3a3a3;
+    --theme-placeholder: #737373;
     --theme-border: #404040;
     --theme-accent: #ffffff;
     --theme-hover-bg: #262626;
     --theme-card-bg: #1a1a1a;
-    --theme-button-bg: #404040;
+    --theme-button-bg: #ffffff;
     --theme-button-text: #000000;
   }
 
@@ -44,10 +46,13 @@
     --theme-text: #5c4033;
     --theme-text-secondary: #6b4e3d;
     --theme-text-muted: #8b6f47;
+    --theme-placeholder: #a08b6f;
     --theme-border: #d4c4a8;
     --theme-accent: #5c4033;
     --theme-hover-bg: #ede4d0;
     --theme-card-bg: #f4ecd8;
+    --theme-button-bg: #5c4033;
+    --theme-button-text: #ffffff;
   }
 
   /* Mint theme */
@@ -56,16 +61,28 @@
     --theme-text: #14532d;
     --theme-text-secondary: #166534;
     --theme-text-muted: #15803d;
+    --theme-placeholder: #86efac;
     --theme-border: #bbf7d0;
     --theme-accent: #14532d;
     --theme-hover-bg: #dcfce7;
     --theme-card-bg: #f0fdf4;
+    --theme-button-bg: #14532d;
+    --theme-button-text: #ffffff;
   }
 
   /* Sepia mode - serif font for body text */
   .theme-sepia .article-content,
   .theme-sepia article {
     font-family: Georgia, 'Times New Roman', serif;
+  }
+
+  /* Placeholder styling */
+  input::placeholder,
+  input::-webkit-input-placeholder,
+  input::-moz-placeholder,
+  input:-ms-input-placeholder {
+    color: var(--theme-placeholder);
+    opacity: 1;
   }
 }
 
