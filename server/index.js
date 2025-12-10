@@ -20,10 +20,10 @@ app.use(express.json());
 // Summarize endpoint
 app.post('/api/summarize', async (req, res) => {
   try {
-    const { title, contentSnippet, fullContent, url } = req.body;
+    const { text } = req.body;
 
-    if (!title && !contentSnippet && !fullContent) {
-      return res.status(400).json({ error: 'title, contentSnippet, or fullContent is required' });
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'text is required' });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -33,16 +33,8 @@ app.post('/api/summarize', async (req, res) => {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    // Prepare the content to summarize - prefer fullContent, fallback to contentSnippet
-    const contentToSummarize = [
-      title,
-      fullContent || contentSnippet,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
     // Limit content length to avoid token limits (approximately 4000 chars)
-    const truncatedContent = contentToSummarize.substring(0, 4000);
+    const truncatedContent = text.substring(0, 4000);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -55,14 +47,14 @@ app.post('/api/summarize', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful assistant that creates concise, informative summaries. Create a brief summary of the provided content. The summary must be maximum 280 characters. Focus on the key points and main information.',
+            content: 'You are a helpful assistant that creates concise, informative summaries. Write a clear and complete summary that captures the key points of the article. Do not use ellipses (...), truncation markers, or indicate that the summary is incomplete. Provide the full summary text.',
           },
           {
             role: 'user',
-            content: `Please summarize the following article in maximum 280 characters:\n\n${truncatedContent}`,
+            content: `Summarize the following article. Write a complete summary that captures the main points:\n\n${truncatedContent}`,
           },
         ],
-        max_tokens: 150,
+        max_tokens: 500,
         temperature: 0.7,
       }),
     });
@@ -80,10 +72,15 @@ app.post('/api/summarize', async (req, res) => {
       throw new Error('No summary returned from API');
     }
 
-    // Ensure summary is max 280 characters
-    if (summary.length > 280) {
-      summary = summary.substring(0, 277) + '...';
-    }
+    // Remove any character count mentions or metadata from the summary
+    // Remove patterns like "(280 chars)", "[280 characters]", etc.
+    summary = summary.replace(/\s*\(?\d+\s*(char|characters?|chars?)\)?/gi, '').trim();
+    summary = summary.replace(/\s*\[\d+\s*(char|characters?|chars?)\]/gi, '').trim();
+    
+    // Remove trailing ellipses if LLM added them despite instructions
+    summary = summary.replace(/\.{2,}$/, '').trim();
+    // Remove any ellipses in the middle or at the end
+    summary = summary.replace(/\s*\.{3,}\s*/g, ' ').trim();
 
     return res.json({ summary });
   } catch (error) {

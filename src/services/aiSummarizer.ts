@@ -3,10 +3,28 @@ import { FeedItem } from '../types';
 /**
  * Generates an AI summary for a feed item using the backend API
  * @param item The feed item to summarize
- * @returns A summary (max 280 characters), or "Summary not available." on error
+ * @returns A summary, or "Summary not available." on error
  */
 export async function summarizeItem(item: FeedItem): Promise<string> {
   try {
+    // Combine title and content for summarization
+    // Always include title if available, and content if available
+    const textParts = [item.title];
+    
+    // Add content if available (prefer fullContent, fallback to contentSnippet)
+    if (item.fullContent && item.fullContent.trim()) {
+      textParts.push(item.fullContent);
+    } else if (item.contentSnippet && item.contentSnippet.trim()) {
+      textParts.push(item.contentSnippet);
+    }
+    
+    const textToSummarize = textParts.filter(Boolean).join('\n\n');
+
+    // Ensure we have at least a title to summarize
+    if (!textToSummarize.trim() || !item.title || !item.title.trim()) {
+      throw new Error('No title or content available to summarize');
+    }
+
     // Use /api endpoint which will be proxied to backend server
     const response = await fetch('/api/summarize', {
       method: 'POST',
@@ -14,10 +32,7 @@ export async function summarizeItem(item: FeedItem): Promise<string> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        title: item.title,
-        contentSnippet: item.contentSnippet || '',
-        fullContent: item.fullContent || '',
-        url: item.url,
+        text: textToSummarize,
       }),
     });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FeedItem } from '../types';
 import { storage } from '../utils/storage';
@@ -9,103 +9,132 @@ export default function ArticleReader() {
   const navigate = useNavigate();
   const [item, setItem] = useState<FeedItem | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const summaryGenerationInProgress = useRef<string | null>(null);
 
   useEffect(() => {
-    if (id) {
-      // Decode the ID in case it was URL-encoded in the route
-      const decodedId = decodeURIComponent(id);
+    if (!id) return;
+
+    // Decode the ID in case it was URL-encoded in the route
+    const decodedId = decodeURIComponent(id);
+    
+    // Try to find by exact ID match first
+    let found = storage.getFeedItem(decodedId);
+    
+    // If not found, try with encoded version
+    if (!found && decodedId !== id) {
+      found = storage.getFeedItem(id);
+    }
+    
+    // If still not found, try to find by URL (IDs might be URLs)
+    if (!found) {
+      console.warn('Article not found for id:', decodedId);
+      const allItems = storage.getFeedItems();
       
-      // Try to find by exact ID match first
-      let found = storage.getFeedItem(decodedId);
+      // Try exact match on URL
+      found = allItems.find(item => item.url === decodedId || item.url === id);
       
-      // If not found, try with encoded version
-      if (!found && decodedId !== id) {
-        found = storage.getFeedItem(id);
-      }
-      
-      // If still not found, try to find by URL (IDs might be URLs)
+      // Try partial match if URL is an ID
       if (!found) {
-        console.warn('Article not found for id:', decodedId);
-        const allItems = storage.getFeedItems();
-        
-        // Try exact match on URL
-        found = allItems.find(item => item.url === decodedId || item.url === id);
-        
-        // Try partial match if URL is an ID
-        if (!found) {
-          found = allItems.find(item => item.id === decodedId || item.id === id);
-        }
-        
-        // Try matching URL contains
-        if (!found) {
-          found = allItems.find(item => 
-            (item.url && (item.url.includes(decodedId) || item.url.includes(id))) ||
-            (item.id && (item.id.includes(decodedId) || item.id.includes(id)))
-          );
-        }
-        
-        if (found) {
-          console.log('Found article by fallback search:', found.id, found.title);
-          setItem(found);
-          // Continue with summary generation below - 'found' is now set
-        } else {
-          console.error('Article not found after all attempts. Available items:', allItems.length);
-          console.error('Looking for ID:', decodedId);
-          console.error('Sample stored IDs:', allItems.slice(0, 3).map(i => i.id));
-          setItem(null);
-          return;
-        }
-      } else {
-        console.log('Found article:', found.id, found.title);
-        setItem(found);
+        found = allItems.find(item => item.id === decodedId || item.id === id);
       }
       
-      // Generate summary if it doesn't exist (found is guaranteed to be set here)
-      const itemToSummarize = found;
-      if (itemToSummarize && !itemToSummarize.aiSummary) {
-        setIsGeneratingSummary(true);
-        summarizeItem(itemToSummarize)
-          .then((summary) => {
-            // Update item in storage and state
-            const items = storage.getFeedItems();
-            const updated = items.map((i) =>
-              i.id === itemToSummarize.id ? { ...i, aiSummary: summary } : i
-            );
-            storage.saveFeedItems(updated);
-            const updatedItem = updated.find(i => i.id === itemToSummarize.id);
-            if (updatedItem) {
-              setItem(updatedItem);
-            }
-          })
-          .catch((error) => {
-            console.error('Error generating summary:', error);
-            console.error('Error details:', {
-              message: error?.message || 'Unknown error',
-              stack: error?.stack,
-              itemId: itemToSummarize?.id,
-              itemTitle: itemToSummarize?.title,
-            });
-            
-            // Check if backend is not running
-            if (error instanceof TypeError && error.message.includes('fetch')) {
-              console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
-            }
-            
-            // Set fallback summary
-            const items = storage.getFeedItems();
-            const updated = items.map((i) =>
-              i.id === itemToSummarize.id ? { ...i, aiSummary: 'Summary not available.' } : i
-            );
-            storage.saveFeedItems(updated);
-            const updatedItem = updated.find(i => i.id === itemToSummarize.id);
-            if (updatedItem) {
-              setItem(updatedItem);
-            }
-          })
-          .finally(() => {
-            setIsGeneratingSummary(false);
-          });
+      // Try matching URL contains
+      if (!found) {
+        found = allItems.find(item => 
+          (item.url && (item.url.includes(decodedId) || item.url.includes(id))) ||
+          (item.id && (item.id.includes(decodedId) || item.id.includes(id)))
+        );
       }
+      
+      if (!found) {
+        console.error('Article not found after all attempts. Available items:', allItems.length);
+        console.error('Looking for ID:', decodedId);
+        console.error('Sample stored IDs:', allItems.slice(0, 3).map(i => i.id));
+        setItem(null);
+        return;
+      }
+      
+      console.log('Found article by fallback search:', found.id, found.title);
+    } else {
+      console.log('Found article:', found.id, found.title);
+    }
+    
+    // Always get the latest item from storage to ensure we have the most up-to-date version
+    const latestItem = storage.getFeedItem(found.id) || found;
+    setItem(latestItem);
+    
+    // Helper function to check if summary needs to be generated
+    const needsSummary = (item: FeedItem): boolean => {
+      // Check if summary is missing, undefined, empty, or is the error message
+      return !item.aiSummary || 
+             item.aiSummary.trim() === '' || 
+             item.aiSummary === 'Summary not available.';
+    };
+    
+    // Generate summary if it doesn't exist and we're not already generating for this item
+    if (needsSummary(latestItem) && summaryGenerationInProgress.current !== latestItem.id) {
+      summaryGenerationInProgress.current = latestItem.id;
+      setIsGeneratingSummary(true);
+      
+      summarizeItem(latestItem)
+        .then((summary) => {
+          // Always get the latest from storage before updating
+          const items = storage.getFeedItems();
+          const currentItem = items.find(i => i.id === latestItem.id);
+          
+          // Only update if summary is still missing (prevent overwriting if user navigated away and back)
+          // Also check if we're still on the same article page
+          const currentRouteId = id ? decodeURIComponent(id) : null;
+          if (currentItem && needsSummary(currentItem) && 
+              (currentRouteId === latestItem.id || currentRouteId === latestItem.url || id === latestItem.id)) {
+            const updated = items.map((i) =>
+              i.id === latestItem.id ? { ...i, aiSummary: summary } : i
+            );
+            storage.saveFeedItems(updated);
+            const updatedItem = updated.find(i => i.id === latestItem.id);
+            if (updatedItem) {
+              setItem(updatedItem);
+            }
+          }
+        })
+        .catch((error) => {
+          console.error('Error generating summary:', error);
+          console.error('Error details:', {
+            message: error?.message || 'Unknown error',
+            stack: error?.stack,
+            itemId: latestItem?.id,
+            itemTitle: latestItem?.title,
+          });
+          
+          // Check if backend is not running
+          if (error instanceof TypeError && error.message.includes('fetch')) {
+            console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
+          }
+          
+          // Only set fallback if summary is still missing
+          // Also check if we're still on the same article page
+          const items = storage.getFeedItems();
+          const currentItem = items.find(i => i.id === latestItem.id);
+          const currentRouteId = id ? decodeURIComponent(id) : null;
+          if (currentItem && needsSummary(currentItem) &&
+              (currentRouteId === latestItem.id || currentRouteId === latestItem.url || id === latestItem.id)) {
+            const updated = items.map((i) =>
+              i.id === latestItem.id ? { ...i, aiSummary: 'Summary not available.' } : i
+            );
+            storage.saveFeedItems(updated);
+            const updatedItem = updated.find(i => i.id === latestItem.id);
+            if (updatedItem) {
+              setItem(updatedItem);
+            }
+          }
+        })
+        .finally(() => {
+          // Only clear if this is still the current item being processed
+          if (summaryGenerationInProgress.current === latestItem.id) {
+            summaryGenerationInProgress.current = null;
+          }
+          setIsGeneratingSummary(false);
+        });
     }
   }, [id]);
 
@@ -189,7 +218,7 @@ export default function ArticleReader() {
             </div>
           ) : item.aiSummary ? (
             <div className="bg-gray-50 border-l-4 border-black pl-6 py-4 mb-6">
-              <p className="text-base text-gray-700 italic m-0">
+              <p className="text-base text-gray-700 m-0">
                 {item.aiSummary}
               </p>
             </div>
