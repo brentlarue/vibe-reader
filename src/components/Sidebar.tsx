@@ -447,12 +447,13 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                   className="group w-full px-3 py-2 text-sm rounded transition-colors"
                   style={{
                     color: 'var(--theme-text-secondary)',
+                    backgroundColor: selectedFeedId === feed.id ? 'var(--theme-hover-bg)' : 'transparent',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.backgroundColor = selectedFeedId === feed.id ? 'var(--theme-hover-bg)' : 'transparent';
                   }}
                 >
                   {editingFeedId === feed.id ? (
