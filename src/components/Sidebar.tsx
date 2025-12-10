@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useState } from 'react';
-import { Feed } from '../types';
+import { useState, useMemo, useEffect } from 'react';
+import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
 
 interface SidebarProps {
@@ -170,6 +170,87 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     }
   };
 
+  // Helper to normalize hostname for comparison
+  const normalizeHostname = (url: string): string | null => {
+    try {
+      const urlObj = new URL(url);
+      let hostname = urlObj.hostname.toLowerCase();
+      if (hostname.startsWith('www.')) {
+        hostname = hostname.substring(4);
+      }
+      return hostname;
+    } catch {
+      return null;
+    }
+  };
+
+  // State to trigger recalculation when items update
+  const [itemsUpdateTrigger, setItemsUpdateTrigger] = useState(0);
+
+  // Listen for feed items updates to refresh counts
+  useEffect(() => {
+    const handleItemsUpdate = () => {
+      setItemsUpdateTrigger(prev => prev + 1);
+    };
+    window.addEventListener('feedItemsUpdated', handleItemsUpdate);
+    return () => window.removeEventListener('feedItemsUpdated', handleItemsUpdate);
+  }, []);
+
+  // Calculate inbox counts for each feed (always shown, regardless of current view)
+  const feedInboxCounts = useMemo(() => {
+    const inboxItems = storage.getFeedItems().filter((item: FeedItem) => item.status === 'inbox');
+    const counts: Record<string, number> = {};
+
+    feeds.forEach((feed) => {
+      const feedHostname = normalizeHostname(feed.url);
+      let count = 0;
+
+      inboxItems.forEach((item: FeedItem) => {
+        // Match by source field (item.source) to rssTitle - most reliable
+        if (feed.rssTitle && item.source === feed.rssTitle) {
+          count++;
+          return;
+        }
+
+        // Fallback: If rssTitle is not set, try matching by name
+        if (!feed.rssTitle && item.source === feed.name) {
+          count++;
+          return;
+        }
+
+        // For Medium feeds, check URL path matching
+        if (feedHostname === 'medium.com') {
+          try {
+            const feedUrl = new URL(feed.url);
+            const feedPath = feedUrl.pathname.toLowerCase();
+            if (feedPath.includes('/feed/')) {
+              const authorPart = feedPath.split('/feed/')[1];
+              if (authorPart) {
+                const itemUrl = new URL(item.url);
+                if (itemUrl.pathname.toLowerCase().includes(authorPart)) {
+                  count++;
+                  return;
+                }
+              }
+            }
+          } catch {
+            // Continue to next check
+          }
+        }
+
+        // Fallback to hostname matching for other feeds
+        const itemHostname = normalizeHostname(item.url);
+        if (feedHostname && itemHostname && feedHostname === itemHostname) {
+          count++;
+        }
+      });
+
+      counts[feed.id] = count;
+    });
+
+    return counts;
+  }, [feeds, itemsUpdateTrigger]);
+
   return (
     <div className="w-64 border-r border-gray-200 bg-white h-screen flex flex-col">
       <div className="p-8 border-b border-gray-200">
@@ -241,7 +322,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
               feeds.map((feed) => (
                 <div
                   key={feed.id}
-                  className="group px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  className="group w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
                 >
                   {editingFeedId === feed.id ? (
                     <div className="flex items-center gap-2">
@@ -275,9 +356,9 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2 w-full min-w-0 relative">
                       <span 
-                        className={`flex-1 truncate ${
+                        className={`flex-1 truncate min-w-0 ${
                           selectedFeedId === feed.id ? 'font-medium text-black' : ''
                         }`}
                         title={feed.name}
@@ -294,28 +375,45 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                       >
                         {feed.name}
                       </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartRename(feed);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 transition-opacity"
-                        title="Rename feed"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveFeed(feed.id);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 transition-opacity"
-                        title="Remove feed"
-                      >
-                        ×
-                      </button>
+                      <div className="flex items-center gap-1 flex-shrink-0 absolute right-0">
+                        {feedInboxCounts[feed.id] !== undefined && (
+                          <span 
+                            className="text-gray-400 text-xs group-hover:hidden whitespace-nowrap"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Toggle selection - if already selected, deselect
+                              onFeedSelect(selectedFeedId === feed.id ? null : feed.id);
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            ({feedInboxCounts[feed.id]})
+                          </span>
+                        )}
+                        <div className="hidden group-hover:flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartRename(feed);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                            title="Rename feed"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveFeed(feed.id);
+                            }}
+                            className="text-gray-400 hover:text-red-600 transition-colors p-1 text-lg leading-none"
+                            title="Remove feed"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
