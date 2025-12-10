@@ -119,7 +119,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
         </p>
       )}
 
-      <div className="flex items-center gap-6 flex-wrap" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-6 flex-wrap mt-5" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={(e) => handleStatusChange('saved', e)}
           className="transition-colors"
