@@ -9,9 +9,11 @@ interface SidebarProps {
   onFeedsChange: () => void;
   onRefreshFeeds: () => Promise<void>;
   onFeedSelect: (feedId: string | null) => void;
+  isCollapsed: boolean;
+  onToggle: () => void;
 }
 
-export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect }: SidebarProps) {
+export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
   const [feedUrl, setFeedUrl] = useState('');
   const [isAddingFeed, setIsAddingFeed] = useState(false);
@@ -37,16 +39,17 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     }
 
     setIsAddingFeed(true);
+    let newFeed: Feed | null = null;
     try {
       // Validate URL
       new URL(feedUrl.trim());
 
       // Normalize the URL (convert Medium/Substack URLs to RSS feeds)
-      const { normalizeFeedUrl, formatUrlAsTitle, fetchRss } = await import('../utils/rss');
+      const { normalizeFeedUrl, fetchRss } = await import('../utils/rss');
       const normalizedUrl = normalizeFeedUrl(feedUrl.trim());
 
       // Create feed with a temporary name (will be updated after fetching)
-      const newFeed: Feed = {
+      newFeed = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         name: 'Loading...',
         url: normalizedUrl,
@@ -65,42 +68,46 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       const { items: newItems, feedTitle: actualFeedTitle } = await fetchRss(normalizedUrl, existingItems);
 
       // Update feed name and rssTitle with actual RSS feed title
-      const updatedFeeds = storage.getFeeds();
-      const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed.id);
-      if (feedIndex !== -1) {
-        updatedFeeds[feedIndex].name = actualFeedTitle;
-        updatedFeeds[feedIndex].rssTitle = actualFeedTitle; // Store original RSS title for matching
-        storage.saveFeeds(updatedFeeds);
-        onFeedsChange();
-      }
-
-      if (newItems.length > 0) {
-        console.log(`Adding feed ${newFeed.url}: got ${newItems.length} new items after deduplication`);
-        const allItems = [...existingItems, ...newItems];
-        storage.saveFeedItems(allItems);
-        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-      } else {
-        console.log(`Adding feed ${newFeed.url}: no new items`);
-        // If no items were returned, it could mean the feed failed to load
-        // Check if this was a new feed (no items exist with this source)
-        const hasItemsFromFeed = existingItems.some(item => item.source === actualFeedTitle);
-        if (!hasItemsFromFeed) {
-          setError('No items found. This might not be a valid RSS feed URL. Please check the URL and try again.');
-          // Remove the feed since it failed to load
-          storage.removeFeed(newFeed.id);
+      if (newFeed) {
+        const updatedFeeds = storage.getFeeds();
+        const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed!.id);
+        if (feedIndex !== -1) {
+          updatedFeeds[feedIndex].name = actualFeedTitle;
+          updatedFeeds[feedIndex].rssTitle = actualFeedTitle; // Store original RSS title for matching
+          storage.saveFeeds(updatedFeeds);
           onFeedsChange();
-          return;
+        }
+
+        if (newItems.length > 0) {
+          console.log(`Adding feed ${newFeed.url}: got ${newItems.length} new items after deduplication`);
+          const allItems = [...existingItems, ...newItems];
+          storage.saveFeedItems(allItems);
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        } else {
+          console.log(`Adding feed ${newFeed.url}: no new items`);
+          // If no items were returned, it could mean the feed failed to load
+          // Check if this was a new feed (no items exist with this source)
+          const hasItemsFromFeed = existingItems.some(item => item.source === actualFeedTitle);
+          if (!hasItemsFromFeed) {
+            setError('No items found. This might not be a valid RSS feed URL. Please check the URL and try again.');
+            // Remove the feed since it failed to load
+            storage.removeFeed(newFeed.id);
+            onFeedsChange();
+            return;
+          }
         }
       }
 
       setFeedUrl('');
     } catch (err) {
       // Remove the feed that was just added since it failed
-      const updatedFeeds = storage.getFeeds();
-      const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed.id);
-      if (feedIndex !== -1) {
-        storage.removeFeed(newFeed.id);
-        onFeedsChange();
+      if (newFeed) {
+        const updatedFeeds = storage.getFeeds();
+        const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed!.id);
+        if (feedIndex !== -1) {
+          storage.removeFeed(newFeed.id);
+          onFeedsChange();
+        }
       }
 
       if (err instanceof Error && err.message.includes('already exists')) {
@@ -251,10 +258,26 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     return counts;
   }, [feeds, itemsUpdateTrigger]);
 
+  if (isCollapsed) {
+    return null;
+  }
+
   return (
     <div className="w-64 border-r border-gray-200 bg-white h-screen flex flex-col">
-      <div className="p-8 border-b border-gray-200">
+      <div className="p-8 border-b border-gray-200 flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-gray-900">The Signal</h1>
+        <button
+          onClick={onToggle}
+          className="group/toggle relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="3" width="18" height="18" rx="1" strokeWidth="2" />
+            <line x1="9" y1="3" x2="9" y2="21" strokeWidth="2" />
+          </svg>
+          <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-white bg-black whitespace-nowrap opacity-0 group-hover/toggle:opacity-100 pointer-events-none transition-opacity duration-0">
+            Hide sidebar
+          </span>
+        </button>
       </div>
 
       <nav className="flex-1 p-6 space-y-1 overflow-y-auto">
