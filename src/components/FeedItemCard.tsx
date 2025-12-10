@@ -5,9 +5,10 @@ import { storage } from '../utils/storage';
 interface FeedItemCardProps {
   item: FeedItem;
   onStatusChange: () => void;
+  scrollKey: string;
 }
 
-export default function FeedItemCard({ item, onStatusChange }: FeedItemCardProps) {
+export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedItemCardProps) {
   const navigate = useNavigate();
 
   const handleStatusChange = (newStatus: FeedItem['status'], e: React.MouseEvent) => {
@@ -47,9 +48,20 @@ export default function FeedItemCard({ item, onStatusChange }: FeedItemCardProps
   };
 
   const handleClick = () => {
+    // Save scroll position before navigating
+    const findScrollContainer = (): HTMLElement | null => {
+      const main = document.querySelector('main');
+      return main;
+    };
+
+    const scrollContainer = findScrollContainer();
+    if (scrollContainer) {
+      sessionStorage.setItem(scrollKey, scrollContainer.scrollTop.toString());
+    }
+
     // Encode the ID if it contains special characters (e.g., if it's a URL)
     const encodedId = encodeURIComponent(item.id);
-    navigate(`/article/${encodedId}`);
+    navigate(`/article/${encodedId}`, { state: { fromList: true } });
   };
 
   // Check if snippet should be displayed

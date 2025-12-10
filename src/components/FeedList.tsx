@@ -1,7 +1,8 @@
 import { FeedItem, Feed } from '../types';
 import FeedItemCard from './FeedItemCard';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
+import { useLocation } from 'react-router-dom';
 
 interface FeedListProps {
   status: FeedItem['status'];
@@ -14,6 +15,9 @@ type SortOrder = 'newest' | 'oldest';
 export default function FeedList({ status, selectedFeedId, feeds }: FeedListProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const location = useLocation();
+  const scrollKey = `scrollPosition_${status}_${selectedFeedId || 'all'}`;
+  const hasRestoredScroll = useRef(false);
 
   // Helper to normalize hostname for comparison
   const normalizeHostname = (url: string): string | null => {
@@ -95,6 +99,8 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
 
   useEffect(() => {
     loadItems();
+    // Reset scroll restoration flag when view changes
+    hasRestoredScroll.current = false;
 
     // Listen for feed items updates
     const handleItemsUpdate = () => {
@@ -105,7 +111,60 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
     return () => {
       window.removeEventListener('feedItemsUpdated', handleItemsUpdate);
     };
-  }, [loadItems]);
+  }, [loadItems, status, selectedFeedId]);
+
+  // Save scroll position before navigating away
+  useEffect(() => {
+    const findScrollContainer = (): HTMLElement | null => {
+      // Find the main element which is the scroll container
+      const main = document.querySelector('main');
+      return main;
+    };
+
+    const handleScroll = () => {
+      const scrollContainer = findScrollContainer();
+      if (scrollContainer) {
+        const scrollPosition = scrollContainer.scrollTop;
+        sessionStorage.setItem(scrollKey, scrollPosition.toString());
+      }
+    };
+
+    const scrollContainer = findScrollContainer();
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+      return () => {
+        scrollContainer.removeEventListener('scroll', handleScroll);
+      };
+    }
+  }, [scrollKey]);
+
+  // Restore scroll position when returning to this view
+  useEffect(() => {
+    // Only restore once when items are loaded and we're on a list page (not article page)
+    if (location.pathname.startsWith('/article')) {
+      hasRestoredScroll.current = false;
+      return;
+    }
+
+    const savedScroll = sessionStorage.getItem(scrollKey);
+    if (savedScroll && items.length > 0 && !hasRestoredScroll.current) {
+      const findScrollContainer = (): HTMLElement | null => {
+        const main = document.querySelector('main');
+        return main;
+      };
+
+      // Use requestAnimationFrame to ensure DOM is fully rendered
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const scrollContainer = findScrollContainer();
+          if (scrollContainer) {
+            scrollContainer.scrollTop = parseInt(savedScroll, 10);
+            hasRestoredScroll.current = true;
+          }
+        }, 50);
+      });
+    }
+  }, [location.pathname, scrollKey, items.length]);
 
   const handleStatusChange = () => {
     loadItems();
@@ -156,16 +215,16 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-end gap-3 mb-6 pr-4">
         {status === 'archived' && items.length > 0 && (
           <button
             onClick={handleDeleteAll}
-            className="text-sm text-red-600 hover:text-red-700 font-medium transition-colors"
+            className="text-sm border border-gray-300 px-3 py-1.5 text-gray-700 bg-white hover:border-gray-400 hover:text-red-600 focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-colors"
           >
             Delete all
           </button>
         )}
-        <div className="flex items-center gap-2 pr-4 ml-auto">
+        <div className="flex items-center gap-2">
           <label htmlFor="sort-order" className="text-sm text-gray-600">
             Sort:
           </label>
@@ -192,6 +251,7 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
           key={item.id}
           item={item}
           onStatusChange={handleStatusChange}
+          scrollKey={scrollKey}
         />
       ))}
     </div>
