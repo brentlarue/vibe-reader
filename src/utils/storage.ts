@@ -113,4 +113,8 @@ export const storage = {
     const filtered = items.filter(item => item.id !== itemId);
     storage.saveFeedItems(filtered);
   },
+
+  clearAllFeedItems: (): void => {
+    localStorage.setItem(FEED_ITEMS_KEY, JSON.stringify([]));
+  },
 };

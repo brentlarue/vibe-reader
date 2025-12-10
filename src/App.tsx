@@ -35,17 +35,48 @@ function App() {
     }
   }, [feeds, selectedFeedId]);
 
+  useEffect(() => {
+    // Expose clear and refresh function to window for console access
+    (window as any).clearAndRefreshFeeds = () => {
+      handleRefreshAllFeeds(true);
+    };
+
+    // Listen for clear and refresh event
+    const handleClearAndRefresh = () => {
+      handleRefreshAllFeeds(true);
+    };
+    window.addEventListener('clearAndRefresh', handleClearAndRefresh);
+
+    // Check for one-time clear and refresh flag
+    const shouldClearAndRefresh = localStorage.getItem('shouldClearAndRefresh');
+    if (shouldClearAndRefresh === 'true') {
+      localStorage.removeItem('shouldClearAndRefresh');
+      handleRefreshAllFeeds(true);
+    }
+
+    return () => {
+      delete (window as any).clearAndRefreshFeeds;
+      window.removeEventListener('clearAndRefresh', handleClearAndRefresh);
+    };
+  }, []);
+
   const handleFeedsChange = () => {
     const loadedFeeds = storage.getFeeds();
     setFeeds(loadedFeeds);
   };
 
-  const handleRefreshAllFeeds = async () => {
+  const handleRefreshAllFeeds = async (clearFirst: boolean = false) => {
     const allFeeds = storage.getFeeds();
     const rssFeeds = allFeeds.filter(feed => feed.sourceType === 'rss');
     
     if (rssFeeds.length === 0) {
       return;
+    }
+
+    // Clear all items if requested
+    if (clearFirst) {
+      storage.clearAllFeedItems();
+      console.log('✓ Cleared all feed items');
     }
 
     const existingItems = storage.getFeedItems();
@@ -87,9 +118,9 @@ function App() {
 
     await Promise.all(fetchPromises);
 
-    // Merge new items with existing items
+    // Save items (either replace if cleared, or merge with existing)
     if (newItems.length > 0) {
-      const allItems = [...existingItems, ...newItems];
+      const allItems = clearFirst ? newItems : [...existingItems, ...newItems];
       storage.saveFeedItems(allItems);
       
       // Trigger a refresh of FeedList components

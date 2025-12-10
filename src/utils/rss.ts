@@ -189,14 +189,14 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
         
         // Extract content snippet for preview - prefer contentSnippet if available (plain text)
         // Otherwise strip HTML from content/description
+        // Note: We don't truncate here - let CSS handle visual truncation with ellipsis
         let contentSnippet = '';
         if (item.contentSnippet && item.contentSnippet.trim()) {
-          contentSnippet = item.contentSnippet.substring(0, 200).trim();
+          contentSnippet = item.contentSnippet.trim();
         } else if (fullContent) {
           contentSnippet = fullContent
             .replace(/<[^>]*>/g, '') // Strip HTML tags
             .replace(/\s+/g, ' ') // Normalize whitespace
-            .substring(0, 200)
             .trim();
         }
 

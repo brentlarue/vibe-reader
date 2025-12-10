@@ -110,8 +110,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
 
       {shouldShowSnippet() && (
         <p 
-          className="text-lg leading-relaxed mb-4 line-clamp-3"
-          style={{ color: 'var(--theme-text-secondary)' }}
+          className="text-lg leading-relaxed mb-4 line-clamp-ellipsis"
+          style={{ 
+            color: 'var(--theme-text-secondary)'
+          }}
         >
           {item.contentSnippet}
         </p>
