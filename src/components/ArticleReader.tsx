@@ -141,7 +141,7 @@ export default function ArticleReader() {
   if (!item) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-500">Article not found</p>
+        <p style={{ color: 'var(--theme-text-muted)' }}>Article not found</p>
       </div>
     );
   }
@@ -189,20 +189,30 @@ export default function ArticleReader() {
     <div className="max-w-3xl mx-auto">
       <button
         onClick={() => navigate(-1)}
-        className="mb-8 text-sm text-gray-500 hover:text-gray-900 font-medium transition-colors"
+        className="mb-8 text-sm font-medium transition-colors"
+        style={{ color: 'var(--theme-text-muted)' }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = 'var(--theme-text)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = 'var(--theme-text-muted)';
+        }}
       >
         ← Back
       </button>
 
       <article className="prose prose-lg max-w-none">
         <header className="mb-12">
-          <div className="flex items-center gap-3 text-sm text-gray-500 mb-4">
+          <div className="flex items-center gap-3 text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>
             <span className="font-medium">{item.source}</span>
             <span>·</span>
             <time>{formatDate(item.publishedAt)}</time>
           </div>
           
-          <h1 className="text-4xl font-bold text-gray-900 leading-tight tracking-tight mb-6">
+          <h1 
+            className="text-4xl font-bold leading-tight tracking-tight mb-6"
+            style={{ color: 'var(--theme-text)' }}
+          >
             {item.title}
           </h1>
 
@@ -257,32 +267,44 @@ export default function ArticleReader() {
         ) : (
           <div className="prose prose-lg max-w-none">
             {!hadContentFromFeed ? (
-              <p className="text-gray-600 italic">
+              <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 No content available for this article. 
                 {item.url && (
-                  <span> <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-black underline hover:no-underline">Read on original site</a></span>
+                  <span> <a href={item.url} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline" style={{ color: 'var(--theme-text)' }}>Read on original site</a></span>
                 )}
               </p>
             ) : (
-              <p className="text-gray-600 italic">
+              <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 Content not available in feed.
                 {item.url && (
-                  <span> <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-black underline hover:no-underline">Read on original site</a></span>
+                  <span> <a href={item.url} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline" style={{ color: 'var(--theme-text)' }}>Read on original site</a></span>
                 )}
               </p>
             )}
           </div>
         )}
 
-        <footer className="mt-12 pt-8 border-t border-gray-200">
+        <footer 
+          className="mt-12 pt-8 border-t"
+          style={{ borderColor: 'var(--theme-border)' }}
+        >
           <div className="flex items-center gap-6">
             <button
               onClick={() => handleStatusChange('saved')}
-              className={`transition-colors ${
-                item.status === 'saved' 
-                  ? 'text-black' 
-                  : 'text-gray-500 hover:text-black'
-              }`}
+              className="transition-colors"
+              style={{
+                color: item.status === 'saved' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+              }}
+              onMouseEnter={(e) => {
+                if (item.status !== 'saved') {
+                  e.currentTarget.style.color = 'var(--theme-text)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (item.status !== 'saved') {
+                  e.currentTarget.style.color = 'var(--theme-text-muted)';
+                }
+              }}
               title="Later"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -291,11 +313,20 @@ export default function ArticleReader() {
             </button>
             <button
               onClick={() => handleStatusChange('bookmarked')}
-              className={`transition-colors ${
-                item.status === 'bookmarked' 
-                  ? 'text-black' 
-                  : 'text-gray-500 hover:text-black'
-              }`}
+              className="transition-colors"
+              style={{
+                color: item.status === 'bookmarked' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+              }}
+              onMouseEnter={(e) => {
+                if (item.status !== 'bookmarked') {
+                  e.currentTarget.style.color = 'var(--theme-text)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (item.status !== 'bookmarked') {
+                  e.currentTarget.style.color = 'var(--theme-text-muted)';
+                }
+              }}
               title={item.status === 'bookmarked' ? 'Bookmarked' : 'Bookmark'}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -304,11 +335,20 @@ export default function ArticleReader() {
             </button>
             <button
               onClick={() => handleStatusChange('archived')}
-              className={`transition-colors ${
-                item.status === 'archived' 
-                  ? 'text-black' 
-                  : 'text-gray-500 hover:text-black'
-              }`}
+              className="transition-colors"
+              style={{
+                color: item.status === 'archived' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+              }}
+              onMouseEnter={(e) => {
+                if (item.status !== 'archived') {
+                  e.currentTarget.style.color = 'var(--theme-text)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (item.status !== 'archived') {
+                  e.currentTarget.style.color = 'var(--theme-text-muted)';
+                }
+              }}
               title={item.status === 'archived' ? 'Archived' : 'Archive'}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -317,7 +357,14 @@ export default function ArticleReader() {
             </button>
             <button
               onClick={handleDelete}
-              className="text-gray-500 hover:text-red-600 transition-colors"
+              className="transition-colors"
+              style={{ color: 'var(--theme-text-muted)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#dc2626';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--theme-text-muted)';
+              }}
               title="Delete"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

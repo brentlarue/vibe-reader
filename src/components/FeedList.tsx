@@ -200,10 +200,10 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
   if (items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
     return (
-      <div className="flex items-center justify-center h-full text-gray-500">
+      <div className="flex items-center justify-center h-full" style={{ color: 'var(--theme-text-muted)' }}>
         <div className="text-center">
-          <p className="text-lg mb-2 font-medium">No items found</p>
-          <p className="text-sm text-gray-400">
+          <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No items found</p>
+          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
             {selectedFeed 
               ? `No items from "${selectedFeed.name}" with status "${getStatusLabel(status)}"`
               : `Items with status "${getStatusLabel(status)}" will appear here`}
@@ -219,13 +219,35 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
         {status === 'archived' && items.length > 0 && (
           <button
             onClick={handleDeleteAll}
-            className="text-sm border border-gray-300 px-3 py-1.5 text-gray-700 bg-white hover:border-gray-400 hover:text-red-600 focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-colors"
+            className="text-sm border px-3 py-1.5 transition-colors focus:outline-none"
+            style={{
+              borderColor: 'var(--theme-border)',
+              backgroundColor: 'transparent',
+              color: 'var(--theme-text)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
+              e.currentTarget.style.color = '#dc2626';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-border)';
+              e.currentTarget.style.color = 'var(--theme-text)';
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-accent)';
+              e.currentTarget.style.outline = '1px solid var(--theme-accent)';
+              e.currentTarget.style.outlineOffset = '-1px';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-border)';
+              e.currentTarget.style.outline = 'none';
+            }}
           >
             Delete all
           </button>
         )}
         <div className="flex items-center gap-2">
-          <label htmlFor="sort-order" className="text-sm text-gray-600">
+          <label htmlFor="sort-order" className="text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
             Sort:
           </label>
           <div className="relative">
@@ -233,13 +255,33 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
               id="sort-order"
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-              className="text-sm border border-gray-300 pl-2 pr-6 py-1.5 text-gray-700 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-colors appearance-none"
+              className="text-sm border pl-2 pr-6 py-1.5 transition-colors appearance-none focus:outline-none"
+              style={{
+                borderColor: 'var(--theme-border)',
+                backgroundColor: 'transparent',
+                color: 'var(--theme-text)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                e.currentTarget.style.outline = '1px solid var(--theme-accent)';
+                e.currentTarget.style.outlineOffset = '-1px';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+                e.currentTarget.style.outline = 'none';
+              }}
             >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
+              <option value="newest" style={{ backgroundColor: 'var(--theme-card-bg)', color: 'var(--theme-text)' }}>Newest first</option>
+              <option value="oldest" style={{ backgroundColor: 'var(--theme-card-bg)', color: 'var(--theme-text)' }}>Oldest first</option>
             </select>
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-4 h-4" style={{ color: 'var(--theme-text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>

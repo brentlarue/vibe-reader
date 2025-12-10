@@ -89,23 +89,30 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
 
   return (
     <article 
-      className="border-b border-gray-200 py-8 cursor-pointer hover:opacity-80 transition-opacity"
+      className="border-b py-8 cursor-pointer hover:opacity-80 transition-opacity"
+      style={{ borderColor: 'var(--theme-border)' }}
       onClick={handleClick}
     >
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3 text-sm text-gray-500">
+        <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--theme-text-muted)' }}>
           <span className="font-medium">{item.source}</span>
           <span>·</span>
           <time>{formatDate(item.publishedAt)}</time>
         </div>
       </div>
 
-      <h2 className="text-2xl font-bold text-gray-900 mb-3 leading-tight tracking-tight">
+      <h2 
+        className="text-2xl font-bold mb-3 leading-tight tracking-tight"
+        style={{ color: 'var(--theme-text)' }}
+      >
         {item.title}
       </h2>
 
       {shouldShowSnippet() && (
-        <p className="text-gray-600 text-lg leading-relaxed mb-4 line-clamp-3">
+        <p 
+          className="text-lg leading-relaxed mb-4 line-clamp-3"
+          style={{ color: 'var(--theme-text-secondary)' }}
+        >
           {item.contentSnippet}
         </p>
       )}
@@ -113,11 +120,20 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
       <div className="flex items-center gap-6 flex-wrap" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={(e) => handleStatusChange('saved', e)}
-          className={`transition-colors ${
-            item.status === 'saved' 
-              ? 'text-black' 
-              : 'text-gray-500 hover:text-black'
-          }`}
+          className="transition-colors"
+          style={{
+            color: item.status === 'saved' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+          }}
+          onMouseEnter={(e) => {
+            if (item.status !== 'saved') {
+              e.currentTarget.style.color = 'var(--theme-text)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (item.status !== 'saved') {
+              e.currentTarget.style.color = 'var(--theme-text-muted)';
+            }
+          }}
           title={item.status === 'saved' ? 'Later' : 'Later'}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -126,11 +142,20 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
         </button>
         <button
           onClick={(e) => handleStatusChange('bookmarked', e)}
-          className={`transition-colors ${
-            item.status === 'bookmarked' 
-              ? 'text-black' 
-              : 'text-gray-500 hover:text-black'
-          }`}
+          className="transition-colors"
+          style={{
+            color: item.status === 'bookmarked' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+          }}
+          onMouseEnter={(e) => {
+            if (item.status !== 'bookmarked') {
+              e.currentTarget.style.color = 'var(--theme-text)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (item.status !== 'bookmarked') {
+              e.currentTarget.style.color = 'var(--theme-text-muted)';
+            }
+          }}
           title={item.status === 'bookmarked' ? 'Bookmarked' : 'Bookmark'}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -139,11 +164,20 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
         </button>
         <button
           onClick={(e) => handleStatusChange('archived', e)}
-          className={`transition-colors ${
-            item.status === 'archived' 
-              ? 'text-black' 
-              : 'text-gray-500 hover:text-black'
-          }`}
+          className="transition-colors"
+          style={{
+            color: item.status === 'archived' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+          }}
+          onMouseEnter={(e) => {
+            if (item.status !== 'archived') {
+              e.currentTarget.style.color = 'var(--theme-text)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (item.status !== 'archived') {
+              e.currentTarget.style.color = 'var(--theme-text-muted)';
+            }
+          }}
           title={item.status === 'archived' ? 'Archived' : 'Archive'}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -152,7 +186,14 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
         </button>
         <button
           onClick={handleDelete}
-          className="text-gray-500 hover:text-red-600 transition-colors"
+          className="transition-colors"
+          style={{ color: 'var(--theme-text-muted)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = '#dc2626';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-muted)';
+          }}
           title="Delete"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

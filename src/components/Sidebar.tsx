@@ -380,20 +380,30 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                   setError(null);
                 }}
                 placeholder="RSS feed URL"
-                className="flex-1 px-2 py-1.5 text-xs border focus:outline-none focus:ring-1 transition-colors"
+                className="flex-1 px-2 py-1.5 text-xs border focus:outline-none transition-colors"
                 style={{
                   borderColor: 'var(--theme-border)',
                   backgroundColor: 'var(--theme-card-bg)',
                   color: 'var(--theme-text)',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                  e.currentTarget.style.outline = '1px solid var(--theme-accent)';
+                  e.currentTarget.style.outlineOffset = '-1px';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--theme-border)';
+                  e.currentTarget.style.outline = 'none';
                 }}
                 disabled={isAddingFeed}
               />
               <button
                 type="submit"
                 disabled={isAddingFeed}
-                className="px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed transition-colors"
+                className="px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed transition-colors"
                 style={{
-                  backgroundColor: 'var(--theme-accent)',
+                  backgroundColor: 'var(--theme-button-bg)',
+                  color: 'var(--theme-button-text)',
                 }}
                 onMouseEnter={(e) => {
                   if (!isAddingFeed) {
@@ -410,7 +420,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
               </button>
             </div>
             {error && (
-              <p className="mt-1 text-xs text-red-600">{error}</p>
+              <p className="mt-1 text-xs" style={{ color: '#dc2626' }}>{error}</p>
             )}
           </form>
 
@@ -443,20 +453,36 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                         type="text"
                         value={editFeedName}
                         onChange={(e) => setEditFeedName(e.target.value)}
-                        onBlur={() => handleSaveRename(feed.id)}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--theme-border)';
+                          e.currentTarget.style.outline = 'none';
+                          handleSaveRename(feed.id);
+                        }}
                         onKeyDown={(e) => handleRenameKeyDown(e, feed.id)}
-                        className="flex-1 px-1 py-0.5 text-sm border focus:outline-none focus:ring-1 transition-colors"
+                        className="flex-1 px-1 py-0.5 text-sm border focus:outline-none transition-colors"
                         style={{
                           borderColor: 'var(--theme-border)',
                           backgroundColor: 'var(--theme-card-bg)',
                           color: 'var(--theme-text)',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                          e.currentTarget.style.outline = '1px solid var(--theme-accent)';
+                          e.currentTarget.style.outlineOffset = '-1px';
                         }}
                         autoFocus
                         onClick={(e) => e.stopPropagation()}
                       />
                       <button
                         onClick={() => handleSaveRename(feed.id)}
-                        className="text-gray-500 hover:text-black transition-colors"
+                        className="transition-colors"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = 'var(--theme-text)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--theme-text-muted)';
+                        }}
                         title="Save"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -465,7 +491,14 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                       </button>
                       <button
                         onClick={handleCancelRename}
-                        className="text-gray-500 hover:text-black transition-colors"
+                        className="transition-colors"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = 'var(--theme-text)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--theme-text-muted)';
+                        }}
                         title="Cancel"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
