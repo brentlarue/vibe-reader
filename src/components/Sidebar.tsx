@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
 import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
-import ThemeToggle from './ThemeToggle';
+import SettingsMenu from './SettingsMenu';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface SidebarProps {
@@ -30,20 +30,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   const handleNavClick = () => {
     if (onCloseMobileDrawer) {
       onCloseMobileDrawer();
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Still redirect to login even if logout request fails
-      window.location.href = '/login';
     }
   };
 
@@ -703,27 +689,10 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         </div>
       </nav>
       
-      <div className="mt-auto pb-6 space-y-4">
-        <div className="px-6">
-          <ThemeToggle />
+      <div className="mt-auto pb-6">
+        <div className="px-4 sm:px-6">
+          <SettingsMenu />
         </div>
-        <button
-          onClick={handleLogout}
-          className="w-full text-left px-6 py-2 text-sm transition-colors"
-          style={{
-            color: 'var(--theme-text-muted)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text)';
-            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text-muted)';
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-        >
-          Log out
-        </button>
       </div>
     </div>
   );
