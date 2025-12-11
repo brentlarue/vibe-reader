@@ -283,11 +283,28 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
           onClick={() => {
             // Clear feed selection
             onFeedSelect(null);
-            // Scroll to top
+            // Clear any saved scroll positions for inbox (all feed variations)
+            sessionStorage.removeItem('scrollPosition_inbox_all');
+            sessionStorage.removeItem('scrollPosition_inbox_null');
+            // Clear all inbox scroll positions (in case there are feed-specific ones)
+            Object.keys(sessionStorage).forEach(key => {
+              if (key.startsWith('scrollPosition_inbox_')) {
+                sessionStorage.removeItem(key);
+              }
+            });
+            // Immediately scroll to top (before navigation)
             const main = document.querySelector('main');
             if (main) {
               main.scrollTop = 0;
             }
+            // Also scroll to top after navigation completes
+            setTimeout(() => {
+              const mainAfterNav = document.querySelector('main');
+              if (mainAfterNav) {
+                mainAfterNav.scrollTop = 0;
+                mainAfterNav.scrollTo({ top: 0, behavior: 'instant' });
+              }
+            }, 0);
           }}
           className="text-2xl font-semibold tracking-tight cursor-pointer"
           style={{ color: 'var(--theme-text)' }}
