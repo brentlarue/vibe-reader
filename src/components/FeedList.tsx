@@ -214,12 +214,12 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-end gap-3 mb-6 pr-4">
+    <div className="w-full max-w-3xl mx-auto">
+      <div className="flex flex-row items-center justify-end gap-4 mb-6" style={{ marginTop: '0', paddingTop: '0' }}>
         {status === 'archived' && items.length > 0 && (
           <button
             onClick={handleDeleteAll}
-            className="text-sm border px-3 py-1.5 transition-colors focus:outline-none"
+            className="text-xs sm:text-sm border px-3 py-1.5 transition-colors focus:outline-none touch-manipulation"
             style={{
               borderColor: 'var(--theme-border)',
               backgroundColor: 'transparent',
@@ -246,8 +246,8 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
             Delete all
           </button>
         )}
-        <div className="flex items-center gap-2">
-          <label htmlFor="sort-order" className="text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
+        <div className="flex items-center gap-2" style={{ marginTop: '0' }}>
+          <label htmlFor="sort-order" className="text-xs sm:text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
             Sort:
           </label>
           <div className="relative">
@@ -255,7 +255,7 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
               id="sort-order"
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-              className="text-sm border pl-2 pr-6 py-1.5 transition-colors appearance-none focus:outline-none"
+              className="text-xs sm:text-sm border pl-2 pr-6 py-2 sm:py-1.5 transition-colors appearance-none focus:outline-none touch-manipulation"
               style={{
                 borderColor: 'var(--theme-border)',
                 backgroundColor: 'transparent',

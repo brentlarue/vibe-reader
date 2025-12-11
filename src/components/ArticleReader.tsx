@@ -435,10 +435,10 @@ export default function ArticleReader() {
   const hadContentFromFeed = !!(item.fullContent || item.contentSnippet);
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="w-full max-w-3xl mx-auto lg:px-0">
       <button
         onClick={() => navigate(-1)}
-        className="mb-8 text-sm font-medium transition-colors"
+        className="mb-6 sm:mb-8 mt-14 lg:mt-0 text-sm font-medium transition-colors touch-manipulation py-2 px-2 lg:-ml-2"
         style={{ color: 'var(--theme-text-muted)' }}
         onMouseEnter={(e) => {
           e.currentTarget.style.color = 'var(--theme-text)';
@@ -450,16 +450,16 @@ export default function ArticleReader() {
         ← Back
       </button>
 
-      <article className="prose prose-lg max-w-none">
-        <header className="mb-12">
-          <div className="flex items-center gap-3 text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>
+      <article className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
+        <header className="mb-8 sm:mb-12">
+          <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm mb-3 sm:mb-4" style={{ color: 'var(--theme-text-muted)' }}>
             <span className="font-medium">{item.source}</span>
             <span>·</span>
             <time>{formatDate(item.publishedAt)}</time>
           </div>
           
           <h1 
-            className="text-4xl font-bold leading-tight tracking-tight mb-6"
+            className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight tracking-tight mb-4 sm:mb-6"
             style={{ color: 'var(--theme-text)' }}
           >
             {item.title}
@@ -528,7 +528,7 @@ export default function ArticleReader() {
               <button
                 onClick={handleGenerateSummary}
                 disabled={isGeneratingSummary}
-                className="text-sm border px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="text-xs sm:text-sm border px-3 sm:px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 touch-manipulation"
                 style={{
                   borderColor: 'var(--theme-border)',
                   backgroundColor: 'transparent',
@@ -558,8 +558,8 @@ export default function ArticleReader() {
           ) : null}
         </header>
 
-        {/* Action bar above content */}
-        <div className="mb-12">
+          {/* Action bar above content */}
+          <div className="mb-8 sm:mb-12">
           <ArticleActionBar 
             item={item} 
             onStatusChange={handleStatusChange} 
@@ -571,10 +571,11 @@ export default function ArticleReader() {
         {hasMeaningfulContent ? (
           <div 
             className="article-content prose prose-lg max-w-none"
+            style={{ paddingLeft: '0', paddingRight: '0' }}
             dangerouslySetInnerHTML={{ __html: content }}
           />
         ) : (
-          <div className="prose prose-lg max-w-none">
+          <div className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
             {!hadContentFromFeed ? (
               <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 No content available for this article. 
@@ -594,7 +595,7 @@ export default function ArticleReader() {
         )}
 
         {/* AI Features Row */}
-        <div className="flex items-center gap-3 mb-6 flex-wrap mt-8">
+        <div className="flex items-center gap-2 sm:gap-3 mb-6 flex-wrap mt-6 sm:mt-8">
           <button
             onClick={() => handleGenerateAIFeature('insightful-reply')}
             disabled={!!generatingFeature}

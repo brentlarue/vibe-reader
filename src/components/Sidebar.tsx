@@ -13,9 +13,11 @@ interface SidebarProps {
   onFeedSelect: (feedId: string | null) => void;
   isCollapsed: boolean;
   onToggle: () => void;
+  onCloseMobileDrawer?: () => void;
+  isMobileDrawerOpen?: boolean;
 }
 
-export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, isCollapsed, onToggle }: SidebarProps) {
+export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, isCollapsed, onToggle, onCloseMobileDrawer, isMobileDrawerOpen }: SidebarProps) {
   const location = useLocation();
   const { theme } = useTheme();
   const [feedUrl, setFeedUrl] = useState('');
@@ -24,6 +26,12 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   const [error, setError] = useState<string | null>(null);
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
   const [editFeedName, setEditFeedName] = useState('');
+
+  const handleNavClick = () => {
+    if (onCloseMobileDrawer) {
+      onCloseMobileDrawer();
+    }
+  };
 
   const navItems = [
     { path: '/inbox', label: 'Inbox' },
@@ -261,21 +269,22 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     return counts;
   }, [feeds, itemsUpdateTrigger]);
 
-  if (isCollapsed) {
-    return null;
-  }
+  // Note: isCollapsed is handled in AppContent - sidebar is hidden via CSS on desktop
+  // On mobile, drawer state is controlled by isMobileDrawerOpen
 
   return (
     <div 
-      className="w-64 border-r h-screen flex flex-col"
+      className="w-64 lg:w-64 border-r h-screen flex flex-col relative bg-white lg:bg-transparent flex-shrink-0"
       style={{ 
         backgroundColor: 'var(--theme-card-bg)', 
         borderColor: 'var(--theme-border)',
-        color: 'var(--theme-text)'
+        color: 'var(--theme-text)',
+        width: '16rem',
+        maxWidth: '85vw',
       }}
     >
       <div 
-        className="p-8 border-b flex items-center justify-between"
+        className="px-6 py-4 sm:p-6 lg:p-8 border-b flex items-center justify-between relative"
         style={{ borderColor: 'var(--theme-border)' }}
       >
         <Link
@@ -283,6 +292,8 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
           onClick={() => {
             // Clear feed selection
             onFeedSelect(null);
+            // Close mobile drawer if open
+            handleNavClick();
             // Clear any saved scroll positions for inbox (all feed variations)
             sessionStorage.removeItem('scrollPosition_inbox_all');
             sessionStorage.removeItem('scrollPosition_inbox_null');
@@ -306,14 +317,39 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
               }
             }, 0);
           }}
-          className="text-2xl font-semibold tracking-tight cursor-pointer"
+          className="text-xl sm:text-2xl font-semibold tracking-tight cursor-pointer flex-1 min-w-0"
           style={{ color: 'var(--theme-text)' }}
         >
           The Signal
         </Link>
+        {/* Mobile sidebar close button - visible when drawer is open */}
+        {isMobileDrawerOpen && (
+          <button
+            onClick={onCloseMobileDrawer}
+            className="lg:hidden p-2 rounded transition-colors ml-4 flex-shrink-0 touch-manipulation"
+            style={{
+              color: 'var(--theme-text-muted)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-muted)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            aria-label="Close menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="3" width="18" height="18" rx="1" strokeWidth="2" />
+              <line x1="9" y1="3" x2="9" y2="21" strokeWidth="2" />
+            </svg>
+          </button>
+        )}
+        {/* Desktop sidebar toggle - hidden on mobile */}
         <button
           onClick={onToggle}
-          className="group/toggle relative p-2 rounded transition-colors"
+          className="hidden lg:block group/toggle relative p-2 rounded transition-colors ml-4 flex-shrink-0"
           style={{
             color: 'var(--theme-text-muted)',
           }}
@@ -336,13 +372,14 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         </button>
       </div>
 
-      <nav className="flex-1 p-6 space-y-1 overflow-y-auto">
-        <div className="mb-8">
+      <nav className="flex-1 p-4 sm:p-6 space-y-1 overflow-y-auto overscroll-contain">
+        <div className="mb-6 sm:mb-8">
           {navItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
-              className="block px-3 py-2 text-sm font-medium transition-colors rounded"
+              onClick={handleNavClick}
+              className="block px-3 py-3 sm:py-2 text-sm font-medium transition-colors rounded touch-manipulation"
               style={{
                 backgroundColor: location.pathname === item.path ? 'var(--theme-hover-bg)' : 'transparent',
                 color: location.pathname === item.path ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
@@ -379,7 +416,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
             <button
               onClick={handleRefreshAll}
               disabled={isRefreshing || feeds.length === 0}
-              className="text-xs disabled:cursor-not-allowed transition-colors"
+              className="text-xs disabled:cursor-not-allowed transition-colors touch-manipulation py-2 px-3 sm:py-0 sm:px-0"
               style={{
                 color: isRefreshing || feeds.length === 0 ? 'var(--theme-text-muted)' : 'var(--theme-text-secondary)',
               }}
@@ -400,7 +437,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
           </div>
 
           <form onSubmit={handleAddFeed} className="mb-4">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={feedUrl}
@@ -409,7 +446,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                   setError(null);
                 }}
                 placeholder="RSS feed URL"
-                className={`flex-1 px-2 py-1.5 text-xs border focus:outline-none transition-colors ${
+                className={`flex-1 px-3 py-2.5 sm:px-2 sm:py-1.5 text-sm sm:text-xs border focus:outline-none transition-colors ${
                   theme === 'light' ? 'placeholder:text-gray-400' :
                   theme === 'dark' ? 'placeholder:text-gray-400' :
                   theme === 'sepia' ? 'placeholder:[color:#8B7355]' :
@@ -639,3 +676,5 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     </div>
   );
 }
+
+

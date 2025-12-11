@@ -89,12 +89,12 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
 
   return (
     <article 
-      className="border-b py-8 cursor-pointer hover:opacity-80 transition-opacity"
+      className="border-b py-6 sm:py-8 cursor-pointer hover:opacity-80 transition-opacity touch-manipulation"
       style={{ borderColor: 'var(--theme-border)' }}
       onClick={handleClick}
     >
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3 text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+        <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm" style={{ color: 'var(--theme-text-muted)' }}>
           <span className="font-medium">{item.source}</span>
           <span>·</span>
           <time>{formatDate(item.publishedAt)}</time>
@@ -102,7 +102,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
       </div>
 
       <h2 
-        className="text-2xl font-bold mb-3 leading-tight tracking-tight"
+        className="text-xl sm:text-2xl font-bold mb-3 leading-tight tracking-tight"
         style={{ color: 'var(--theme-text)' }}
       >
         {item.title}
@@ -110,7 +110,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
 
       {shouldShowSnippet() && (
         <p 
-          className="text-lg leading-relaxed mb-4 line-clamp-ellipsis"
+          className="text-base sm:text-lg leading-relaxed mb-4 line-clamp-ellipsis"
           style={{ 
             color: 'var(--theme-text-secondary)'
           }}
@@ -119,10 +119,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
         </p>
       )}
 
-      <div className="flex items-center gap-6 flex-wrap mt-5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-4 sm:gap-6 flex-wrap mt-5" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={(e) => handleStatusChange('saved', e)}
-          className="transition-colors"
+          className="transition-colors touch-manipulation p-2 -ml-2"
           style={{
             color: item.status === 'saved' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
           }}
@@ -137,14 +137,15 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
             }
           }}
           title={item.status === 'saved' ? 'Later' : 'Later'}
+          aria-label={item.status === 'saved' ? 'Remove from Later' : 'Save for Later'}
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>
         <button
           onClick={(e) => handleStatusChange('bookmarked', e)}
-          className="transition-colors"
+          className="transition-colors touch-manipulation p-2 -ml-2"
           style={{
             color: item.status === 'bookmarked' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
           }}
@@ -159,14 +160,15 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
             }
           }}
           title={item.status === 'bookmarked' ? 'Bookmarked' : 'Bookmark'}
+          aria-label={item.status === 'bookmarked' ? 'Remove Bookmark' : 'Bookmark'}
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
           </svg>
         </button>
         <button
           onClick={(e) => handleStatusChange('archived', e)}
-          className="transition-colors"
+          className="transition-colors touch-manipulation p-2 -ml-2"
           style={{
             color: item.status === 'archived' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
           }}
@@ -181,14 +183,15 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
             }
           }}
           title={item.status === 'archived' ? 'Archived' : 'Archive'}
+          aria-label="Archive"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
           </svg>
         </button>
         <button
           onClick={handleDelete}
-          className="transition-colors"
+          className="transition-colors touch-manipulation p-2 -ml-2"
           style={{ color: 'var(--theme-text-muted)' }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = '#dc2626';
@@ -197,8 +200,9 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
             e.currentTarget.style.color = 'var(--theme-text-muted)';
           }}
           title="Delete"
+          aria-label="Delete"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         </button>
