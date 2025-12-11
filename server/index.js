@@ -18,9 +18,20 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Authentication constants
-const APP_PASSWORD = 'Octopus-salad-42!';
-const SESSION_SECRET = 'replace-with-some-random-string'; // Used for signing session tokens
+// Authentication constants - must be set in environment variables
+const APP_PASSWORD = process.env.APP_PASSWORD;
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+// Validate required environment variables
+if (!APP_PASSWORD) {
+  console.error('ERROR: APP_PASSWORD environment variable is required. Please set it in your .env file.');
+  process.exit(1);
+}
+
+if (SESSION_SECRET === process.env.SESSION_SECRET && !process.env.SESSION_SECRET) {
+  // Only warn if SESSION_SECRET is auto-generated (not set in env)
+  console.warn('WARNING: SESSION_SECRET not set in environment. Using auto-generated secret. This will invalidate sessions on server restart.');
+}
 
 // Data file path
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -134,7 +145,6 @@ app.use(cookieParser());
 // Login endpoint
 app.post('/api/login', async (req, res) => {
   console.log('[LOGIN] /api/login called');
-  console.log('[LOGIN] Request body:', req.body);
   
   const { password, rememberMe } = req.body;
 
@@ -143,11 +153,20 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).json({ error: 'Password is required' });
   }
 
-  console.log('[LOGIN] Password received (length):', password.length);
-  console.log('[LOGIN] Password match:', password === APP_PASSWORD);
+  // Use secure comparison to prevent timing attacks
+  // First check length to avoid timingSafeEqual error on length mismatch
+  if (password.length !== APP_PASSWORD.length) {
+    console.log('[LOGIN] Invalid password attempt');
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+  
+  const passwordMatch = crypto.timingSafeEqual(
+    Buffer.from(password),
+    Buffer.from(APP_PASSWORD)
+  );
 
-  if (password !== APP_PASSWORD) {
-    console.log('[LOGIN] Invalid password');
+  if (!passwordMatch) {
+    console.log('[LOGIN] Invalid password attempt');
     return res.status(401).json({ error: 'Invalid password' });
   }
 
@@ -156,11 +175,10 @@ app.post('/api/login', async (req, res) => {
     sub: 'user',
     iat: Date.now()
   };
-  console.log('[LOGIN] Session payload:', payload);
+  console.log('[LOGIN] Login successful, creating session');
 
   // Sign session
   const token = signSession(payload, SESSION_SECRET);
-  console.log('[LOGIN] Token generated (first 20 chars):', token.substring(0, 20) + '...');
 
   // Set cookie
   const maxAge = rememberMe ? 90 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 90 days or 1 day
@@ -176,9 +194,8 @@ app.post('/api/login', async (req, res) => {
     cookieOptions.secure = true;
   }
   
-  console.log('[LOGIN] Cookie options:', cookieOptions);
   res.cookie('session', token, cookieOptions);
-  console.log('[LOGIN] Cookie set, returning ok: true');
+  console.log('[LOGIN] Session cookie set successfully');
   return res.json({ ok: true });
 });
 
