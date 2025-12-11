@@ -235,6 +235,85 @@ app.get('/api/me', requireAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
+// RSS Proxy endpoint (protected) - fetches and parses RSS feeds server-side
+app.post('/api/rss-proxy', requireAuth, async (req, res) => {
+  try {
+    const { feedUrl } = req.body;
+    
+    if (!feedUrl || typeof feedUrl !== 'string') {
+      return res.status(400).json({ error: 'feedUrl is required' });
+    }
+
+    console.log('[RSS-PROXY] Fetching:', feedUrl);
+
+    // Dynamically import rss-parser (ES module)
+    const Parser = (await import('rss-parser')).default;
+    const parser = new Parser({
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; TheSignalReader/1.0)',
+        'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, */*',
+      },
+      customFields: {
+        item: [
+          ['content:encoded', 'contentEncoded'],
+          ['content', 'content'],
+        ],
+      },
+    });
+
+    const feed = await parser.parseURL(feedUrl);
+
+    console.log('[RSS-PROXY] Parsed feed:', feed.title, '- Items:', feed.items?.length || 0);
+
+    // Format the response similar to rss2json.com for compatibility
+    const response = {
+      status: 'ok',
+      feed: {
+        title: feed.title || '',
+        description: feed.description || '',
+        link: feed.link || feedUrl,
+        image: feed.image?.url || '',
+      },
+      items: (feed.items || []).map(item => ({
+        title: item.title || 'Untitled',
+        link: item.link || '',
+        guid: item.guid || item.id || item.link || '',
+        pubDate: item.pubDate || item.isoDate || new Date().toISOString(),
+        description: item.contentSnippet || item.summary || '',
+        content: item.contentEncoded || item.content || item['content:encoded'] || item.description || '',
+        contentSnippet: item.contentSnippet || (item.content ? item.content.replace(/<[^>]*>/g, '').substring(0, 500) : ''),
+        author: item.creator || item.author || '',
+        categories: item.categories || [],
+      })),
+    };
+
+    return res.json(response);
+  } catch (error) {
+    console.error('[RSS-PROXY] Error:', error.message);
+    
+    // Provide helpful error messages
+    let errorMessage = 'Failed to fetch RSS feed';
+    if (error.message?.includes('ENOTFOUND') || error.message?.includes('getaddrinfo')) {
+      errorMessage = 'Could not reach the feed URL. Please check the URL is correct.';
+    } else if (error.message?.includes('ETIMEDOUT') || error.message?.includes('timeout')) {
+      errorMessage = 'The feed took too long to respond. Please try again.';
+    } else if (error.message?.includes('Non-whitespace before first tag') || error.message?.includes('Invalid character')) {
+      errorMessage = 'This URL does not appear to be a valid RSS or Atom feed.';
+    } else if (error.message?.includes('certificate') || error.message?.includes('SSL')) {
+      errorMessage = 'SSL certificate issue with the feed URL.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    return res.status(500).json({ 
+      status: 'error',
+      error: errorMessage,
+      message: errorMessage
+    });
+  }
+});
+
 // Summarize endpoint (protected)
 app.post('/api/summarize', requireAuth, async (req, res) => {
   try {

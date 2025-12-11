@@ -1,4 +1,5 @@
 import { FeedItem } from '../types';
+import { apiFetch } from './apiFetch';
 
 /**
  * Normalizes URLs to RSS feed URLs for common platforms (Medium, Substack)
@@ -100,7 +101,7 @@ export function formatUrlAsTitle(url: string): string {
 }
 
 /**
- * Fetches and parses an RSS feed from a URL using rss2json.com API
+ * Fetches and parses an RSS feed from a URL using our server-side proxy
  * Returns FeedItem[] with the 5 most recent items, sorted by publishedAt descending
  * Also returns the feed title from the RSS feed
  */
@@ -108,28 +109,25 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
   console.log('Fetching RSS for', feedUrl);
   
   try {
-    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}`;
-    
-    const response = await fetch(apiUrl, {
-      method: 'GET',
+    // Use our server-side RSS proxy to avoid CORS and rate limit issues
+    const response = await apiFetch('/api/rss-proxy', {
+      method: 'POST',
       headers: {
-        'Accept': 'application/json',
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ feedUrl }),
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch RSS feed: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || `Failed to fetch RSS feed: ${response.status}`);
     }
 
     const data = await response.json();
 
-    // Check if rss2json returned an error
+    // Check if proxy returned an error
     if (data.status === 'error') {
-      const errorMessage = data.message || 'Failed to fetch RSS feed';
-      // Provide more helpful error messages
-      if (errorMessage.includes('HTML') || errorMessage.includes('html') || errorMessage.includes('Invalid')) {
-        throw new Error('This URL appears to be an HTML page, not an RSS feed. Please use a direct RSS feed URL (usually ending in .rss, .xml, /feed, or /rss).');
-      }
+      const errorMessage = data.message || data.error || 'Failed to fetch RSS feed';
       throw new Error(errorMessage);
     }
 
