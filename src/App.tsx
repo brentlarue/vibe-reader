@@ -3,24 +3,44 @@ import { useState, useEffect } from 'react';
 import AppContent from './components/AppContent';
 import { Feed } from './types';
 import { storage } from './utils/storage';
+import { preferences } from './utils/preferences';
 
 function App() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
   
-  // Sidebar collapse state with localStorage persistence (desktop)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    return saved ? JSON.parse(saved) : false;
-  });
+  // Sidebar collapse state - synced across devices
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Mobile drawer state (separate from desktop collapse)
+  // Mobile drawer state (separate from desktop collapse, local to device)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
-  const toggleSidebar = () => {
+  // Load sidebar state from server on mount
+  useEffect(() => {
+    const loadSidebarState = async () => {
+      try {
+        const saved = await preferences.getSidebarCollapsed();
+        setIsSidebarCollapsed(saved);
+      } catch (error) {
+        // Fallback to localStorage if API fails
+        const saved = localStorage.getItem('sidebarCollapsed');
+        setIsSidebarCollapsed(saved ? JSON.parse(saved) : false);
+      }
+    };
+    loadSidebarState();
+  }, []);
+
+  const toggleSidebar = async () => {
     const newState = !isSidebarCollapsed;
     setIsSidebarCollapsed(newState);
+    // Save to localStorage as backup
     localStorage.setItem('sidebarCollapsed', JSON.stringify(newState));
+    // Sync to server
+    try {
+      await preferences.setSidebarCollapsed(newState);
+    } catch (error) {
+      console.error('Failed to sync sidebar state to server:', error);
+    }
   };
 
   const toggleMobileDrawer = () => {
@@ -34,8 +54,11 @@ function App() {
 
   useEffect(() => {
     // Load feeds
-    const loadedFeeds = storage.getFeeds();
-    setFeeds(loadedFeeds);
+    const loadFeeds = async () => {
+      const loadedFeeds = await storage.getFeeds();
+      setFeeds(loadedFeeds);
+    };
+    loadFeeds();
   }, []);
 
   useEffect(() => {
@@ -70,13 +93,13 @@ function App() {
     };
   }, []);
 
-  const handleFeedsChange = () => {
-    const loadedFeeds = storage.getFeeds();
+  const handleFeedsChange = async () => {
+    const loadedFeeds = await storage.getFeeds();
     setFeeds(loadedFeeds);
   };
 
   const handleRefreshAllFeeds = async (clearFirst: boolean = false) => {
-    const allFeeds = storage.getFeeds();
+    const allFeeds = await storage.getFeeds();
     const rssFeeds = allFeeds.filter(feed => feed.sourceType === 'rss');
     
     if (rssFeeds.length === 0) {
@@ -85,11 +108,11 @@ function App() {
 
     // Clear all items if requested
     if (clearFirst) {
-      storage.clearAllFeedItems();
+      await storage.clearAllFeedItems();
       console.log('✓ Cleared all feed items');
     }
 
-    const existingItems = storage.getFeedItems();
+    const existingItems = await storage.getFeedItems();
     const newItems: typeof existingItems = [];
 
     // Fetch all RSS feeds in parallel
@@ -112,11 +135,11 @@ function App() {
         // Update rssTitle if it's missing (for backwards compatibility with old feeds)
         // Don't update feed name during refresh - preserve the existing name
         if (!feed.rssTitle) {
-          const allFeeds = storage.getFeeds();
+          const allFeeds = await storage.getFeeds();
           const feedIndex = allFeeds.findIndex(f => f.id === feed.id);
           if (feedIndex !== -1) {
             allFeeds[feedIndex].rssTitle = feedTitle;
-            storage.saveFeeds(allFeeds);
+            await storage.saveFeeds(allFeeds);
             // Update state to reflect the change
             handleFeedsChange();
           }
@@ -131,7 +154,7 @@ function App() {
     // Save items (either replace if cleared, or merge with existing)
     if (newItems.length > 0) {
       const allItems = clearFirst ? newItems : [...existingItems, ...newItems];
-      storage.saveFeedItems(allItems);
+      await storage.saveFeedItems(allItems);
       
       // Trigger a refresh of FeedList components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));

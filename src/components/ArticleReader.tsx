@@ -28,62 +28,66 @@ export default function ArticleReader() {
   useEffect(() => {
     if (!id) return;
 
-    // Decode the ID in case it was URL-encoded in the route
-    const decodedId = decodeURIComponent(id);
-    
-    // Try to find by exact ID match first
-    let found = storage.getFeedItem(decodedId);
-    
-    // If not found, try with encoded version
-    if (!found && decodedId !== id) {
-      found = storage.getFeedItem(id);
-    }
-    
-    // If still not found, try to find by URL (IDs might be URLs)
-    if (!found) {
-      console.warn('Article not found for id:', decodedId);
-      const allItems = storage.getFeedItems();
+    const loadArticle = async () => {
+      // Decode the ID in case it was URL-encoded in the route
+      const decodedId = decodeURIComponent(id);
       
-      // Try exact match on URL
-      found = allItems.find(item => item.url === decodedId || item.url === id) || null;
+      // Try to find by exact ID match first
+      let found = await storage.getFeedItem(decodedId);
       
-      // Try partial match if URL is an ID
-      if (!found) {
-        found = allItems.find(item => item.id === decodedId || item.id === id) || null;
+      // If not found, try with encoded version
+      if (!found && decodedId !== id) {
+        found = await storage.getFeedItem(id);
       }
       
-      // Try matching URL contains
+      // If still not found, try to find by URL (IDs might be URLs)
       if (!found) {
-        found = allItems.find(item => 
-          (item.url && (item.url.includes(decodedId) || item.url.includes(id))) ||
-          (item.id && (item.id.includes(decodedId) || item.id.includes(id)))
-        ) || null;
+        console.warn('Article not found for id:', decodedId);
+        const allItems = await storage.getFeedItems();
+        
+        // Try exact match on URL
+        found = allItems.find(item => item.url === decodedId || item.url === id) || null;
+        
+        // Try partial match if URL is an ID
+        if (!found) {
+          found = allItems.find(item => item.id === decodedId || item.id === id) || null;
+        }
+        
+        // Try matching URL contains
+        if (!found) {
+          found = allItems.find(item => 
+            (item.url && (item.url.includes(decodedId) || item.url.includes(id))) ||
+            (item.id && (item.id.includes(decodedId) || item.id.includes(id)))
+          ) || null;
+        }
+        
+        if (!found) {
+          console.error('Article not found after all attempts. Available items:', allItems.length);
+          console.error('Looking for ID:', decodedId);
+          console.error('Sample stored IDs:', allItems.slice(0, 3).map(i => i.id));
+          setItem(null);
+          return;
+        }
+        
+        console.log('Found article by fallback search:', found.id, found.title);
+      } else {
+        console.log('Found article:', found.id, found.title);
       }
       
-      if (!found) {
-        console.error('Article not found after all attempts. Available items:', allItems.length);
-        console.error('Looking for ID:', decodedId);
-        console.error('Sample stored IDs:', allItems.slice(0, 3).map(i => i.id));
-        setItem(null);
-        return;
-      }
-      
-      console.log('Found article by fallback search:', found.id, found.title);
-    } else {
-      console.log('Found article:', found.id, found.title);
-    }
+      // Always get the latest item from storage to ensure we have the most up-to-date version
+      const latestItem = await storage.getFeedItem(found.id) || found;
+      setItem(latestItem);
+      // Reset AI feature results when article changes
+      setAiFeatureResults({
+        'insightful-reply': null,
+        'investor-analysis': null,
+        'founder-implications': null,
+      });
+      setGeneratingFeature(null);
+      summaryGenerationInProgress.current = null;
+    };
     
-    // Always get the latest item from storage to ensure we have the most up-to-date version
-    const latestItem = storage.getFeedItem(found.id) || found;
-    setItem(latestItem);
-    // Reset AI feature results when article changes
-    setAiFeatureResults({
-      'insightful-reply': null,
-      'investor-analysis': null,
-      'founder-implications': null,
-    });
-    setGeneratingFeature(null);
-    summaryGenerationInProgress.current = null;
+    loadArticle();
   }, [id]);
 
   if (!item) {
@@ -103,20 +107,20 @@ export default function ArticleReader() {
     });
   };
 
-  const handleStatusChange = (newStatus: FeedItem['status']) => {
-    const items = storage.getFeedItems();
+  const handleStatusChange = async (newStatus: FeedItem['status']) => {
+    const items = await storage.getFeedItems();
     const updated = items.map((i) =>
       i.id === item.id ? { ...i, status: newStatus } : i
     );
-    storage.saveFeedItems(updated);
+    await storage.saveFeedItems(updated);
     setItem({ ...item, status: newStatus });
     // Trigger event for other components to update
     window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this item?')) {
-      storage.removeFeedItem(item.id);
+      await storage.removeFeedItem(item.id);
       // Navigate back after deletion
       navigate(-1);
       // Trigger event for other components
@@ -132,7 +136,7 @@ export default function ArticleReader() {
            item.aiSummary === 'Summary not available.';
   };
 
-  const handleGenerateSummary = () => {
+  const handleGenerateSummary = async () => {
     if (!item || isGeneratingSummary || summaryGenerationInProgress.current === item.id) {
       return;
     }
@@ -140,74 +144,75 @@ export default function ArticleReader() {
     summaryGenerationInProgress.current = item.id;
     setIsGeneratingSummary(true);
     
-    summarizeItem(item)
-      .then((summary) => {
-        // Debug: Log summary before storing
-        console.log('AI summary before storing - Length (characters):', summary.length);
-        console.log('AI summary full text:', summary);
+    try {
+      const summary = await summarizeItem(item);
+      
+      // Debug: Log summary before storing
+      console.log('AI summary before storing - Length (characters):', summary.length);
+      console.log('AI summary full text:', summary);
+      
+      // Always get the latest from storage before updating
+      const items = await storage.getFeedItems();
+      const currentItem = items.find(i => i.id === item.id);
+      
+      // Only update if summary is still missing and we're still on the same article
+      const currentRouteId = id ? decodeURIComponent(id) : null;
+      if (currentItem && needsSummary(currentItem) && 
+          (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+        const updated = items.map((i) =>
+          i.id === item.id ? { ...i, aiSummary: summary } : i
+        );
+        await storage.saveFeedItems(updated);
+        const updatedItem = updated.find(i => i.id === item.id);
         
-        // Always get the latest from storage before updating
-        const items = storage.getFeedItems();
-        const currentItem = items.find(i => i.id === item.id);
-        
-        // Only update if summary is still missing and we're still on the same article
-        const currentRouteId = id ? decodeURIComponent(id) : null;
-        if (currentItem && needsSummary(currentItem) && 
-            (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-          const updated = items.map((i) =>
-            i.id === item.id ? { ...i, aiSummary: summary } : i
-          );
-          storage.saveFeedItems(updated);
-          const updatedItem = updated.find(i => i.id === item.id);
-          
-          // Debug: Log what we're storing
-          if (updatedItem) {
-            console.log('AI summary stored in item - Length (characters):', (updatedItem.aiSummary || '').length);
-            console.log('AI summary stored text:', updatedItem.aiSummary);
-          }
-          
-          if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-            setItem(updatedItem);
-          }
-        }
-      })
-      .catch((error) => {
-        console.error('Error generating summary:', error);
-        console.error('Error details:', {
-          message: error?.message || 'Unknown error',
-          stack: error?.stack,
-          itemId: item?.id,
-          itemTitle: item?.title,
-        });
-        
-        // Check if backend is not running
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-          console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
+        // Debug: Log what we're storing
+        if (updatedItem) {
+          console.log('AI summary stored in item - Length (characters):', (updatedItem.aiSummary || '').length);
+          console.log('AI summary stored text:', updatedItem.aiSummary);
         }
         
-        // Only set fallback if summary is still missing and we're still on the same article
-        const items = storage.getFeedItems();
-        const currentItem = items.find(i => i.id === item.id);
-        const currentRouteId = id ? decodeURIComponent(id) : null;
-        if (currentItem && needsSummary(currentItem) &&
-            (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-          const updated = items.map((i) =>
-            i.id === item.id ? { ...i, aiSummary: 'Summary not available.' } : i
-          );
-          storage.saveFeedItems(updated);
-          const updatedItem = updated.find(i => i.id === item.id);
-          if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-            setItem(updatedItem);
-          }
+        if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+          setItem(updatedItem);
         }
-      })
-      .finally(() => {
-        // Only clear if this is still the current item being processed
-        if (summaryGenerationInProgress.current === item.id) {
-          summaryGenerationInProgress.current = null;
-        }
-        setIsGeneratingSummary(false);
+      }
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error('Error details:', {
+        message: errorMessage,
+        stack: errorStack,
+        itemId: item?.id,
+        itemTitle: item?.title,
       });
+      
+      // Check if backend is not running
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
+      }
+      
+      // Only set fallback if summary is still missing and we're still on the same article
+      const items = await storage.getFeedItems();
+      const currentItem = items.find(i => i.id === item.id);
+      const currentRouteId = id ? decodeURIComponent(id) : null;
+      if (currentItem && needsSummary(currentItem) &&
+          (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+        const updated = items.map((i) =>
+          i.id === item.id ? { ...i, aiSummary: 'Summary not available.' } : i
+        );
+        await storage.saveFeedItems(updated);
+        const updatedItem = updated.find(i => i.id === item.id);
+        if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
+          setItem(updatedItem);
+        }
+      }
+    } finally {
+      // Only clear if this is still the current item being processed
+      if (summaryGenerationInProgress.current === item.id) {
+        summaryGenerationInProgress.current = null;
+      }
+      setIsGeneratingSummary(false);
+    }
   };
 
   const handleGenerateAIFeature = async (featureType: AIFeatureType) => {

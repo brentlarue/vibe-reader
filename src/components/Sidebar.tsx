@@ -68,31 +68,31 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         rssTitle: undefined, // Will be set after fetching
       };
 
-      storage.addFeed(newFeed);
+      await storage.addFeed(newFeed);
       onFeedsChange();
 
       // Fetch the feed to get its name and items
       console.log('Adding new feed:', newFeed.url);
 
       // fetchRss now returns { items, feedTitle } with deduplication, sorting, and limiting to 5
-      const existingItems = storage.getFeedItems();
+      const existingItems = await storage.getFeedItems();
       const { items: newItems, feedTitle: actualFeedTitle } = await fetchRss(normalizedUrl, existingItems);
 
       // Update feed name and rssTitle with actual RSS feed title
       if (newFeed) {
-        const updatedFeeds = storage.getFeeds();
+        const updatedFeeds = await storage.getFeeds();
         const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed!.id);
         if (feedIndex !== -1) {
           updatedFeeds[feedIndex].name = actualFeedTitle;
           updatedFeeds[feedIndex].rssTitle = actualFeedTitle; // Store original RSS title for matching
-          storage.saveFeeds(updatedFeeds);
+          await storage.saveFeeds(updatedFeeds);
           onFeedsChange();
         }
 
         if (newItems.length > 0) {
           console.log(`Adding feed ${newFeed.url}: got ${newItems.length} new items after deduplication`);
           const allItems = [...existingItems, ...newItems];
-          storage.saveFeedItems(allItems);
+          await storage.saveFeedItems(allItems);
           window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
         } else {
           console.log(`Adding feed ${newFeed.url}: no new items`);
@@ -102,7 +102,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
           if (!hasItemsFromFeed) {
             setError('No items found. This might not be a valid RSS feed URL. Please check the URL and try again.');
             // Remove the feed since it failed to load
-            storage.removeFeed(newFeed.id);
+            await storage.removeFeed(newFeed.id);
             onFeedsChange();
             return;
           }
@@ -113,11 +113,11 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     } catch (err) {
       // Remove the feed that was just added since it failed
       if (newFeed) {
-        const updatedFeeds = storage.getFeeds();
-        const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed!.id);
-        if (feedIndex !== -1) {
-          storage.removeFeed(newFeed.id);
+        try {
+          await storage.removeFeed(newFeed.id);
           onFeedsChange();
+        } catch (error) {
+          console.error('Error removing failed feed:', error);
         }
       }
 
@@ -160,9 +160,9 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     setEditFeedName('');
   };
 
-  const handleSaveRename = (feedId: string) => {
+  const handleSaveRename = async (feedId: string) => {
     if (editFeedName.trim()) {
-      storage.updateFeedName(feedId, editFeedName);
+      await storage.updateFeedName(feedId, editFeedName.trim());
       onFeedsChange();
     }
     handleCancelRename();
@@ -202,13 +202,33 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     }
   };
 
-  // State to trigger recalculation when items update
-  const [itemsUpdateTrigger, setItemsUpdateTrigger] = useState(0);
+  // State to store inbox items for counting
+  const [inboxItems, setInboxItems] = useState<FeedItem[]>([]);
+
+  // Load inbox items for feed counts
+  useEffect(() => {
+    const loadInboxItems = async () => {
+      try {
+        const allItems = await storage.getFeedItems();
+        const inbox = allItems.filter(item => item.status === 'inbox');
+        setInboxItems(inbox);
+      } catch (error) {
+        console.error('Error loading inbox items for counts:', error);
+      }
+    };
+    loadInboxItems();
+  }, []);
 
   // Listen for feed items updates to refresh counts
   useEffect(() => {
-    const handleItemsUpdate = () => {
-      setItemsUpdateTrigger(prev => prev + 1);
+    const handleItemsUpdate = async () => {
+      try {
+        const allItems = await storage.getFeedItems();
+        const inbox = allItems.filter(item => item.status === 'inbox');
+        setInboxItems(inbox);
+      } catch (error) {
+        console.error('Error refreshing inbox items:', error);
+      }
     };
     window.addEventListener('feedItemsUpdated', handleItemsUpdate);
     return () => window.removeEventListener('feedItemsUpdated', handleItemsUpdate);
@@ -216,7 +236,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
   // Calculate inbox counts for each feed (always shown, regardless of current view)
   const feedInboxCounts = useMemo(() => {
-    const inboxItems = storage.getFeedItems().filter((item: FeedItem) => item.status === 'inbox');
     const counts: Record<string, number> = {};
 
     feeds.forEach((feed) => {
@@ -267,7 +286,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     });
 
     return counts;
-  }, [feeds, itemsUpdateTrigger]);
+  }, [feeds, inboxItems]);
 
   // Note: isCollapsed is handled in AppContent - sidebar is hidden via CSS on desktop
   // On mobile, drawer state is controlled by isMobileDrawerOpen

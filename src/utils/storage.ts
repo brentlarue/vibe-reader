@@ -3,52 +3,117 @@ import { FeedItem, Feed } from '../types';
 const FEED_ITEMS_KEY = 'vibe-reader-feed-items';
 const FEEDS_KEY = 'vibe-reader-feeds';
 
+// API request helper
+const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  const response = await fetch(`/api/data/${endpoint}`, {
+    ...options,
+    headers,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Unauthorized. Please check your API key in .env file.');
+    }
+    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+  
+  return response.json();
+};
+
+// Fallback to localStorage if API fails
+const fallbackToLocalStorage = (key: string, defaultValue: any) => {
+  if (typeof window === 'undefined') return defaultValue;
+  const stored = localStorage.getItem(key);
+  if (!stored) return defaultValue;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return defaultValue;
+  }
+};
+
+const saveToLocalStorage = (key: string, value: any) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+};
+
 export const storage = {
-  getFeedItems: (): FeedItem[] => {
-    const stored = localStorage.getItem(FEED_ITEMS_KEY);
-    if (!stored) return [];
+  getFeedItems: async (): Promise<FeedItem[]> => {
     try {
-      return JSON.parse(stored);
-    } catch {
-      return [];
+      const items = await apiRequest('feed-items');
+      saveToLocalStorage(FEED_ITEMS_KEY, items);
+      return items;
+    } catch (error) {
+      console.warn('Failed to fetch feed items from API, using local storage:', error);
+      return fallbackToLocalStorage(FEED_ITEMS_KEY, []);
     }
   },
 
-  saveFeedItems: (items: FeedItem[]): void => {
-    localStorage.setItem(FEED_ITEMS_KEY, JSON.stringify(items));
+  saveFeedItems: async (items: FeedItem[]): Promise<void> => {
+    // Save to localStorage first for immediate UI update
+    saveToLocalStorage(FEED_ITEMS_KEY, items);
+    
+    try {
+      await apiRequest('feed-items', {
+        method: 'POST',
+        body: JSON.stringify(items),
+      });
+    } catch (error) {
+      console.error('Failed to save feed items to API:', error);
+      throw error;
+    }
   },
 
-  getFeedItem: (id: string): FeedItem | null => {
-    const items = storage.getFeedItems();
+  getFeedItem: async (id: string): Promise<FeedItem | null> => {
+    const items = await storage.getFeedItems();
     return items.find(item => item.id === id) || null;
   },
 
-  getFeeds: (): Feed[] => {
-    const stored = localStorage.getItem(FEEDS_KEY);
-    if (!stored) return [];
+  getFeeds: async (): Promise<Feed[]> => {
     try {
-      return JSON.parse(stored);
-    } catch {
-      return [];
+      const feeds = await apiRequest('feeds');
+      saveToLocalStorage(FEEDS_KEY, feeds);
+      return feeds;
+    } catch (error) {
+      console.warn('Failed to fetch feeds from API, using local storage:', error);
+      return fallbackToLocalStorage(FEEDS_KEY, []);
     }
   },
 
-  saveFeeds: (feeds: Feed[]): void => {
-    localStorage.setItem(FEEDS_KEY, JSON.stringify(feeds));
+  saveFeeds: async (feeds: Feed[]): Promise<void> => {
+    // Save to localStorage first for immediate UI update
+    saveToLocalStorage(FEEDS_KEY, feeds);
+    
+    try {
+      await apiRequest('feeds', {
+        method: 'POST',
+        body: JSON.stringify(feeds),
+      });
+    } catch (error) {
+      console.error('Failed to save feeds to API:', error);
+      throw error;
+    }
   },
 
-  addFeed: (feed: Feed): void => {
-    const feeds = storage.getFeeds();
+  addFeed: async (feed: Feed): Promise<void> => {
+    const feeds = await storage.getFeeds();
     // Check if feed with same URL already exists
     if (feeds.some(f => f.url === feed.url)) {
       throw new Error('Feed with this URL already exists');
     }
     feeds.push(feed);
-    storage.saveFeeds(feeds);
+    await storage.saveFeeds(feeds);
   },
 
-  removeFeed: (feedId: string): void => {
-    const feeds = storage.getFeeds();
+  removeFeed: async (feedId: string): Promise<void> => {
+    const feeds = await storage.getFeeds();
     const feedToRemove = feeds.find(f => f.id === feedId);
     
     if (!feedToRemove) {
@@ -57,11 +122,11 @@ export const storage = {
 
     // Remove the feed
     const filteredFeeds = feeds.filter(f => f.id !== feedId);
-    storage.saveFeeds(filteredFeeds);
+    await storage.saveFeeds(filteredFeeds);
 
     // Remove items from this feed that are in "inbox" or "archived" status
     // Keep items with "saved" or "bookmarked" status
-    const allItems = storage.getFeedItems();
+    const allItems = await storage.getFeedItems();
     
     // Helper to normalize hostname for comparison
     const normalizeHostname = (url: string): string | null => {
@@ -92,29 +157,29 @@ export const storage = {
       return item.status === 'saved' || item.status === 'bookmarked';
     });
 
-    storage.saveFeedItems(filteredItems);
+    await storage.saveFeedItems(filteredItems);
   },
 
-  getFeed: (feedId: string): Feed | null => {
-    const feeds = storage.getFeeds();
+  getFeed: async (feedId: string): Promise<Feed | null> => {
+    const feeds = await storage.getFeeds();
     return feeds.find(f => f.id === feedId) || null;
   },
 
-  updateFeedName: (feedId: string, newName: string): void => {
-    const feeds = storage.getFeeds();
+  updateFeedName: async (feedId: string, newName: string): Promise<void> => {
+    const feeds = await storage.getFeeds();
     const updated = feeds.map(f => 
       f.id === feedId ? { ...f, name: newName.trim() } : f
     );
-    storage.saveFeeds(updated);
+    await storage.saveFeeds(updated);
   },
 
-  removeFeedItem: (itemId: string): void => {
-    const items = storage.getFeedItems();
+  removeFeedItem: async (itemId: string): Promise<void> => {
+    const items = await storage.getFeedItems();
     const filtered = items.filter(item => item.id !== itemId);
-    storage.saveFeedItems(filtered);
+    await storage.saveFeedItems(filtered);
   },
 
-  clearAllFeedItems: (): void => {
-    localStorage.setItem(FEED_ITEMS_KEY, JSON.stringify([]));
+  clearAllFeedItems: async (): Promise<void> => {
+    await storage.saveFeedItems([]);
   },
 };

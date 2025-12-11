@@ -18,6 +18,9 @@ dist-ssr
 .env.*.local
 .env.server
 
+# Data directory (user data, synced across devices)
+data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

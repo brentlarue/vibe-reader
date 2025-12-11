@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { promises as fs } from 'fs';
+import { existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,9 +15,57 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Data file path
+const DATA_DIR = join(__dirname, '..', 'data');
+const FEEDS_FILE = join(DATA_DIR, 'feeds.json');
+const FEED_ITEMS_FILE = join(DATA_DIR, 'feed-items.json');
+
+// Preferences file path
+const PREFERENCES_FILE = join(DATA_DIR, 'preferences.json');
+
+// Ensure data directory exists
+async function ensureDataDir() {
+  if (!existsSync(DATA_DIR)) {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+  }
+  // Initialize empty files if they don't exist
+  if (!existsSync(FEEDS_FILE)) {
+    await fs.writeFile(FEEDS_FILE, JSON.stringify([]), 'utf-8');
+  }
+  if (!existsSync(FEED_ITEMS_FILE)) {
+    await fs.writeFile(FEED_ITEMS_FILE, JSON.stringify([]), 'utf-8');
+  }
+  if (!existsSync(PREFERENCES_FILE)) {
+    await fs.writeFile(PREFERENCES_FILE, JSON.stringify({}), 'utf-8');
+  }
+}
+
+ensureDataDir().catch(console.error);
+
+// Simple API key authentication middleware
+const API_KEY = process.env.API_KEY || process.env.SYNC_API_KEY;
+const requireAuth = (req, res, next) => {
+  // If no API key is set, allow all requests (for backward compatibility)
+  if (!API_KEY) {
+    return next();
+  }
+  
+  const providedKey = req.headers['x-api-key'] || req.query.apiKey;
+  if (providedKey === API_KEY) {
+    return next();
+  }
+  
+  return res.status(401).json({ error: 'Unauthorized. Provide X-API-Key header or apiKey query parameter.' });
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Apply auth middleware to data endpoints (optional for personal use)
+// If API_KEY is set in .env, it will require authentication
+// If not set, all requests are allowed (for personal use)
+app.use('/api/data', requireAuth);
 
 // Summarize endpoint
 app.post('/api/summarize', async (req, res) => {
@@ -292,6 +342,105 @@ ${truncatedContent}`
   } catch (error) {
     console.error('Error generating AI feature:', error);
     return res.status(500).json({ error: 'Failed to generate AI feature', message: error.message });
+  }
+});
+
+// Data API endpoints for cross-device sync
+
+// Helper functions to read/write JSON files
+async function readJsonFile(filePath) {
+  try {
+    const data = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error(`Error reading ${filePath}:`, error);
+    return [];
+  }
+}
+
+async function writeJsonFile(filePath, data) {
+  try {
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch (error) {
+    console.error(`Error writing ${filePath}:`, error);
+    throw error;
+  }
+}
+
+// Feeds endpoints
+app.get('/api/data/feeds', async (req, res) => {
+  try {
+    await ensureDataDir();
+    const feeds = await readJsonFile(FEEDS_FILE);
+    res.json(feeds);
+  } catch (error) {
+    console.error('Error reading feeds:', error);
+    res.status(500).json({ error: 'Failed to read feeds' });
+  }
+});
+
+app.post('/api/data/feeds', async (req, res) => {
+  try {
+    await ensureDataDir();
+    const feeds = Array.isArray(req.body) ? req.body : [];
+    await writeJsonFile(FEEDS_FILE, feeds);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving feeds:', error);
+    res.status(500).json({ error: 'Failed to save feeds' });
+  }
+});
+
+// Feed items endpoints
+app.get('/api/data/feed-items', async (req, res) => {
+  try {
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    res.json(items);
+  } catch (error) {
+    console.error('Error reading feed items:', error);
+    res.status(500).json({ error: 'Failed to read feed items' });
+  }
+});
+
+app.post('/api/data/feed-items', async (req, res) => {
+  try {
+    await ensureDataDir();
+    const items = Array.isArray(req.body) ? req.body : [];
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving feed items:', error);
+    res.status(500).json({ error: 'Failed to save feed items' });
+  }
+});
+
+// Preferences endpoint (for theme, sidebar state, etc.)
+app.get('/api/data/preferences', async (req, res) => {
+  try {
+    await ensureDataDir();
+    if (!existsSync(PREFERENCES_FILE)) {
+      await fs.writeFile(PREFERENCES_FILE, JSON.stringify({}), 'utf-8');
+    }
+    const preferences = await readJsonFile(PREFERENCES_FILE);
+    res.json(preferences);
+  } catch (error) {
+    console.error('Error reading preferences:', error);
+    res.status(500).json({ error: 'Failed to read preferences' });
+  }
+});
+
+app.post('/api/data/preferences', async (req, res) => {
+  try {
+    await ensureDataDir();
+    const currentPrefs = existsSync(PREFERENCES_FILE) ? await readJsonFile(PREFERENCES_FILE) : {};
+    const updatedPrefs = { ...currentPrefs, ...req.body };
+    await writeJsonFile(PREFERENCES_FILE, updatedPrefs);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+    res.status(500).json({ error: 'Failed to save preferences' });
   }
 });
 

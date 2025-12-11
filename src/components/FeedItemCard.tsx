@@ -11,22 +11,22 @@ interface FeedItemCardProps {
 export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedItemCardProps) {
   const navigate = useNavigate();
 
-  const handleStatusChange = (newStatus: FeedItem['status'], e: React.MouseEvent) => {
+  const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
-    const items = storage.getFeedItems();
+    const items = await storage.getFeedItems();
     const updated = items.map((i) =>
       i.id === item.id ? { ...i, status: newStatus } : i
     );
-    storage.saveFeedItems(updated);
+    await storage.saveFeedItems(updated);
     onStatusChange();
     // Trigger event for other components
     window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this item?')) {
-      storage.removeFeedItem(item.id);
+      await storage.removeFeedItem(item.id);
       onStatusChange();
       // Trigger event for other components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));

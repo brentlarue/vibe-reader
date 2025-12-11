@@ -33,8 +33,8 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
     }
   };
 
-  const loadItems = useCallback(() => {
-    const allItems = storage.getFeedItems();
+  const loadItems = useCallback(async () => {
+    const allItems = await storage.getFeedItems();
     let filtered = allItems.filter((item) => item.status === status);
     
     // Filter by selected feed if one is selected
@@ -170,12 +170,12 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
     loadItems();
   };
 
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
     if (status === 'archived') {
       if (confirm('Are you sure you want to delete all archived items? This action cannot be undone.')) {
-        const allItems = storage.getFeedItems();
+        const allItems = await storage.getFeedItems();
         const filtered = allItems.filter(item => item.status !== 'archived');
-        storage.saveFeedItems(filtered);
+        await storage.saveFeedItems(filtered);
         loadItems();
         window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
       }

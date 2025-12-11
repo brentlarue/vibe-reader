@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Theme } from '../types';
+import { preferences } from '../utils/preferences';
 
 interface ThemeContextType {
   theme: Theme;
@@ -9,20 +10,47 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const saved = localStorage.getItem('readerTheme');
-    return (saved as Theme) || 'light';
-  });
+  const [theme, setThemeState] = useState<Theme>('light');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const setTheme = (newTheme: Theme) => {
+  // Load theme from server on mount
+  useEffect(() => {
+    const loadTheme = async () => {
+      try {
+        const savedTheme = await preferences.getTheme();
+        setThemeState(savedTheme);
+        applyTheme(savedTheme);
+      } catch (error) {
+        // Fallback to localStorage if API fails
+        const saved = localStorage.getItem('readerTheme');
+        const fallbackTheme = (saved as Theme) || 'light';
+        setThemeState(fallbackTheme);
+        applyTheme(fallbackTheme);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTheme();
+  }, []);
+
+  const setTheme = async (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('readerTheme', newTheme);
     applyTheme(newTheme);
+    // Save to localStorage as backup
+    localStorage.setItem('readerTheme', newTheme);
+    // Sync to server
+    try {
+      await preferences.setTheme(newTheme);
+    } catch (error) {
+      console.error('Failed to sync theme to server:', error);
+    }
   };
 
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+    if (!isLoading) {
+      applyTheme(theme);
+    }
+  }, [theme, isLoading]);
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
