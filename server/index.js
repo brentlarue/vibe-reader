@@ -16,7 +16,8 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const isProduction = process.env.NODE_ENV === 'production';
+// Check if we're in production (Railway/Render set NODE_ENV automatically)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT || process.env.RENDER;
 
 // Authentication constants - must be set in environment variables
 const APP_PASSWORD = process.env.APP_PASSWORD;
@@ -129,9 +130,26 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests) or localhost
     if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
       callback(null, true);
+      } else if (isProduction) {
+      // In production, allow requests from your domain
+      const allowedOrigins = [
+        'https://brentlarue.me',
+        'https://www.brentlarue.me',
+        'https://thesignal.brentlarue.me'
+      ];
+      
+      // Check if origin matches any allowed origin
+      const isAllowed = allowedOrigins.some(allowed => origin.startsWith(allowed));
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        // Log for debugging but allow for now (you can restrict later)
+        console.log('CORS: Unrecognized origin:', origin);
+        callback(null, true); // Allow for now - restrict later if needed
+      }
     } else {
-      // For production, you might want to whitelist specific origins
-      callback(null, true); // Allow all for now
+      // In development, allow all origins
+      callback(null, true);
     }
   },
   credentials: true, // Allow cookies
@@ -600,7 +618,31 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Serve static files from the Vite dist directory in production
+if (isProduction) {
+  const distPath = join(__dirname, '..', 'dist');
+  
+  // Check if dist directory exists
+  if (existsSync(distPath)) {
+    app.use(express.static(distPath));
+    
+    // Serve index.html for all non-API routes (SPA routing)
+    app.get('*', (req, res, next) => {
+      // Don't serve index.html for API routes
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(join(distPath, 'index.html'));
+    });
+  } else {
+    console.warn('Warning: dist directory not found. Static files will not be served.');
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  if (isProduction) {
+    console.log('Production mode: Serving static files from dist/');
+  }
 });
 
