@@ -2,7 +2,7 @@ services:
   - type: web
     name: the-signal
     env: node
-    buildCommand: npm install && npm run build
+    buildCommand: bash -c "NODE_ENV=development npm ci && npm run build"
     startCommand: npm start
     envVars:
       - key: NODE_ENV
