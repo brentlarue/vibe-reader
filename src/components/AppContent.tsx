@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
@@ -99,9 +99,8 @@ function AppContent({
             feeds={feeds} 
             selectedFeedId={selectedFeedId}
             onFeedsChange={handleFeedsChange}
-            onRefreshFeeds={handleRefreshAllFeeds}
+            onRefreshFeeds={() => handleRefreshAllFeeds(false)}
             onFeedSelect={setSelectedFeedId}
-            isCollapsed={isSidebarCollapsed}
             onToggle={toggleSidebar}
             onCloseMobileDrawer={closeMobileDrawer}
             isMobileDrawerOpen={isMobileDrawerOpen}

@@ -11,13 +11,12 @@ interface SidebarProps {
   onFeedsChange: () => void;
   onRefreshFeeds: () => Promise<void>;
   onFeedSelect: (feedId: string | null) => void;
-  isCollapsed: boolean;
   onToggle: () => void;
   onCloseMobileDrawer?: () => void;
   isMobileDrawerOpen?: boolean;
 }
 
-export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, isCollapsed, onToggle, onCloseMobileDrawer, isMobileDrawerOpen }: SidebarProps) {
+export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, onToggle, onCloseMobileDrawer, isMobileDrawerOpen }: SidebarProps) {
   const location = useLocation();
   const { theme } = useTheme();
   const [feedUrl, setFeedUrl] = useState('');

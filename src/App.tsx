@@ -87,14 +87,6 @@ function App() {
     }
   };
 
-  const toggleMobileDrawer = () => {
-    setIsMobileDrawerOpen(!isMobileDrawerOpen);
-  };
-
-  const closeMobileDrawer = () => {
-    setIsMobileDrawerOpen(false);
-  };
-
 
   useEffect(() => {
     // Load feeds only if authenticated
