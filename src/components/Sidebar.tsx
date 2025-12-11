@@ -33,6 +33,20 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still redirect to login even if logout request fails
+      window.location.href = '/login';
+    }
+  };
+
   const navItems = [
     { path: '/inbox', label: 'Inbox' },
     { path: '/saved', label: 'Later' },
@@ -689,8 +703,27 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         </div>
       </nav>
       
-      <div className="p-6">
-        <ThemeToggle />
+      <div className="mt-auto pb-6 space-y-4">
+        <div className="px-6">
+          <ThemeToggle />
+        </div>
+        <button
+          onClick={handleLogout}
+          className="w-full text-left px-6 py-2 text-sm transition-colors"
+          style={{
+            color: 'var(--theme-text-muted)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text)';
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-muted)';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          Log out
+        </button>
       </div>
     </div>
   );

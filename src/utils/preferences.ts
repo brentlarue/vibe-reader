@@ -1,6 +1,8 @@
 // Preferences storage for syncing across devices
 // Stores theme, sidebar state, and other user preferences
 
+import { apiFetch } from './apiFetch';
+
 export interface Preferences {
   theme?: 'light' | 'dark' | 'sepia' | 'mint';
   sidebarCollapsed?: boolean;
@@ -13,15 +15,12 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     ...options.headers,
   };
   
-  const response = await fetch(`/api/data/${endpoint}`, {
+  const response = await apiFetch(`/api/data/${endpoint}`, {
     ...options,
     headers,
   });
   
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Unauthorized. Please check your API key in .env file.');
-    }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || `HTTP ${response.status}`);
   }
@@ -54,8 +53,11 @@ export const preferences = {
       // Sync to localStorage as backup
       saveToLocalStorage('vibe-reader-preferences', prefs);
       return prefs;
-    } catch (error) {
-      console.warn('Failed to fetch preferences from API, using local storage:', error);
+    } catch (error: any) {
+      // Suppress warnings for expected 401 errors (user not authenticated yet)
+      if (!error?.suppressWarning && !error?.isUnauthorized) {
+        console.warn('Failed to fetch preferences from API, using local storage:', error);
+      }
       return fallbackToLocalStorage('vibe-reader-preferences', {});
     }
   },

@@ -3,6 +3,8 @@ import { FeedItem, Feed } from '../types';
 const FEED_ITEMS_KEY = 'vibe-reader-feed-items';
 const FEEDS_KEY = 'vibe-reader-feeds';
 
+import { apiFetch } from './apiFetch';
+
 // API request helper
 const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
   const headers: HeadersInit = {
@@ -10,15 +12,12 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     ...options.headers,
   };
   
-  const response = await fetch(`/api/data/${endpoint}`, {
+  const response = await apiFetch(`/api/data/${endpoint}`, {
     ...options,
     headers,
   });
   
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Unauthorized. Please check your API key in .env file.');
-    }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || `HTTP ${response.status}`);
   }
@@ -50,8 +49,11 @@ export const storage = {
       const items = await apiRequest('feed-items');
       saveToLocalStorage(FEED_ITEMS_KEY, items);
       return items;
-    } catch (error) {
-      console.warn('Failed to fetch feed items from API, using local storage:', error);
+    } catch (error: any) {
+      // Suppress warnings for expected 401 errors (user not authenticated yet)
+      if (!error?.suppressWarning && !error?.isUnauthorized) {
+        console.warn('Failed to fetch feed items from API, using local storage:', error);
+      }
       return fallbackToLocalStorage(FEED_ITEMS_KEY, []);
     }
   },
@@ -81,8 +83,11 @@ export const storage = {
       const feeds = await apiRequest('feeds');
       saveToLocalStorage(FEEDS_KEY, feeds);
       return feeds;
-    } catch (error) {
-      console.warn('Failed to fetch feeds from API, using local storage:', error);
+    } catch (error: any) {
+      // Suppress warnings for expected 401 errors (user not authenticated yet)
+      if (!error?.suppressWarning && !error?.isUnauthorized) {
+        console.warn('Failed to fetch feeds from API, using local storage:', error);
+      }
       return fallbackToLocalStorage(FEEDS_KEY, []);
     }
   },

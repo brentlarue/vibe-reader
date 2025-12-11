@@ -1,4 +1,5 @@
 import { FeedItem } from '../types';
+import { apiFetch } from '../utils/apiFetch';
 
 /**
  * Generates an AI summary for a feed item using the backend API
@@ -26,7 +27,7 @@ export async function summarizeItem(item: FeedItem): Promise<string> {
     }
 
     // Use /api endpoint which will be proxied to backend server
-    const response = await fetch('/api/summarize', {
+    const response = await apiFetch('/api/summarize', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

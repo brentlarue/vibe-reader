@@ -1,4 +1,5 @@
 import { FeedItem } from '../types';
+import { apiFetch } from '../utils/apiFetch';
 
 export type AIFeatureType = 'insightful-reply' | 'investor-analysis' | 'founder-implications';
 
@@ -25,7 +26,7 @@ export async function generateAIFeature(item: FeedItem, featureType: AIFeatureTy
     }
 
     // Use /api endpoint which will be proxied to backend server
-    const response = await fetch('/api/ai-feature', {
+    const response = await apiFetch('/api/ai-feature', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

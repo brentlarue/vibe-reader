@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
@@ -14,6 +16,11 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Authentication constants
+const APP_PASSWORD = 'Octopus-salad-42!';
+const SESSION_SECRET = 'replace-with-some-random-string'; // Used for signing session tokens
 
 // Data file path
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -42,33 +49,159 @@ async function ensureDataDir() {
 
 ensureDataDir().catch(console.error);
 
-// Simple API key authentication middleware
-const API_KEY = process.env.API_KEY || process.env.SYNC_API_KEY;
-const requireAuth = (req, res, next) => {
-  // If no API key is set, allow all requests (for backward compatibility)
-  if (!API_KEY) {
-    return next();
+// Session token helpers
+// Payload structure: { sub: "user", iat: number }
+function signSession(payload, secret) {
+  const payloadJson = JSON.stringify(payload);
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(payloadJson);
+  const signature = hmac.digest('hex');
+  const token = Buffer.from(`${payloadJson}:${signature}`).toString('base64');
+  return token;
+}
+
+function verifySession(token, secret) {
+  try {
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    // Use lastIndexOf to find the separator, since JSON payload contains colons
+    const separatorIndex = decoded.lastIndexOf(':');
+    if (separatorIndex === -1) {
+      throw new Error('Invalid token format');
+    }
+    
+    const payloadJson = decoded.substring(0, separatorIndex);
+    const signature = decoded.substring(separatorIndex + 1);
+    
+    if (!payloadJson || !signature) {
+      throw new Error('Invalid token format');
+    }
+    
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(payloadJson);
+    const expectedSignature = hmac.digest('hex');
+    
+    if (signature !== expectedSignature) {
+      throw new Error('Invalid signature');
+    }
+    
+    return JSON.parse(payloadJson);
+  } catch (error) {
+    console.log('[AUTH] verifySession error:', error.message);
+    throw new Error('Invalid or tampered token');
   }
-  
-  const providedKey = req.headers['x-api-key'] || req.query.apiKey;
-  if (providedKey === API_KEY) {
-    return next();
+}
+
+// Authentication middleware - requires valid session cookie
+function requireAuth(req, res, next) {
+  console.log('[AUTH] requireAuth called for:', req.method, req.path);
+  console.log('[AUTH] Cookies received:', req.cookies);
+  const token = req.cookies?.session;
+  if (!token) {
+    console.log('[AUTH] No session token found, returning 401');
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-  
-  return res.status(401).json({ error: 'Unauthorized. Provide X-API-Key header or apiKey query parameter.' });
-};
+
+  try {
+    const payload = verifySession(token, SESSION_SECRET);
+    console.log('[AUTH] Session verified successfully:', payload);
+    req.user = payload;
+    return next();
+  } catch (err) {
+    console.log('[AUTH] Session verification failed:', err.message);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+}
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests) or localhost
+    if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      callback(null, true);
+    } else {
+      // For production, you might want to whitelist specific origins
+      callback(null, true); // Allow all for now
+    }
+  },
+  credentials: true, // Allow cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
+app.use(cookieParser());
 
-// Apply auth middleware to data endpoints (optional for personal use)
-// If API_KEY is set in .env, it will require authentication
-// If not set, all requests are allowed (for personal use)
-app.use('/api/data', requireAuth);
+// Public routes (before auth middleware)
+// Login endpoint
+app.post('/api/login', async (req, res) => {
+  console.log('[LOGIN] /api/login called');
+  console.log('[LOGIN] Request body:', req.body);
+  
+  const { password, rememberMe } = req.body;
 
-// Summarize endpoint
-app.post('/api/summarize', async (req, res) => {
+  if (!password || typeof password !== 'string') {
+    console.log('[LOGIN] Password missing or not a string');
+    return res.status(400).json({ error: 'Password is required' });
+  }
+
+  console.log('[LOGIN] Password received (length):', password.length);
+  console.log('[LOGIN] Password match:', password === APP_PASSWORD);
+
+  if (password !== APP_PASSWORD) {
+    console.log('[LOGIN] Invalid password');
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+
+  // Create session payload
+  const payload = {
+    sub: 'user',
+    iat: Date.now()
+  };
+  console.log('[LOGIN] Session payload:', payload);
+
+  // Sign session
+  const token = signSession(payload, SESSION_SECRET);
+  console.log('[LOGIN] Token generated (first 20 chars):', token.substring(0, 20) + '...');
+
+  // Set cookie
+  const maxAge = rememberMe ? 90 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 90 days or 1 day
+  const cookieOptions = {
+    maxAge,
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/'
+  };
+  
+  // Only set secure in production (HTTPS)
+  if (isProduction) {
+    cookieOptions.secure = true;
+  }
+  
+  console.log('[LOGIN] Cookie options:', cookieOptions);
+  res.cookie('session', token, cookieOptions);
+  console.log('[LOGIN] Cookie set, returning ok: true');
+  return res.json({ ok: true });
+});
+
+// Logout endpoint (public, clears cookie)
+app.post('/api/logout', (req, res) => {
+  res.cookie('session', '', {
+    maxAge: 0,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProduction,
+    path: '/'
+  });
+  return res.json({ ok: true });
+});
+
+// Protected /api/me endpoint for checking auth status
+app.get('/api/me', requireAuth, (req, res) => {
+  console.log('[ME] /api/me passed auth, returning ok: true');
+  return res.json({ ok: true });
+});
+
+// Summarize endpoint (protected)
+app.post('/api/summarize', requireAuth, async (req, res) => {
   try {
     const { text } = req.body;
 
@@ -189,8 +322,8 @@ Write your complete, finished summary within 360 characters:\n\n${truncatedConte
   }
 });
 
-// AI Feature endpoint
-app.post('/api/ai-feature', async (req, res) => {
+// AI Feature endpoint (protected)
+app.post('/api/ai-feature', requireAuth, async (req, res) => {
   try {
     const { text, featureType } = req.body;
 
@@ -368,8 +501,9 @@ async function writeJsonFile(filePath, data) {
   }
 }
 
+// Data API endpoints (protected)
 // Feeds endpoints
-app.get('/api/data/feeds', async (req, res) => {
+app.get('/api/data/feeds', requireAuth, async (req, res) => {
   try {
     await ensureDataDir();
     const feeds = await readJsonFile(FEEDS_FILE);
@@ -380,7 +514,7 @@ app.get('/api/data/feeds', async (req, res) => {
   }
 });
 
-app.post('/api/data/feeds', async (req, res) => {
+app.post('/api/data/feeds', requireAuth, async (req, res) => {
   try {
     await ensureDataDir();
     const feeds = Array.isArray(req.body) ? req.body : [];
@@ -393,7 +527,7 @@ app.post('/api/data/feeds', async (req, res) => {
 });
 
 // Feed items endpoints
-app.get('/api/data/feed-items', async (req, res) => {
+app.get('/api/data/feed-items', requireAuth, async (req, res) => {
   try {
     await ensureDataDir();
     const items = await readJsonFile(FEED_ITEMS_FILE);
@@ -404,7 +538,7 @@ app.get('/api/data/feed-items', async (req, res) => {
   }
 });
 
-app.post('/api/data/feed-items', async (req, res) => {
+app.post('/api/data/feed-items', requireAuth, async (req, res) => {
   try {
     await ensureDataDir();
     const items = Array.isArray(req.body) ? req.body : [];
@@ -417,7 +551,7 @@ app.post('/api/data/feed-items', async (req, res) => {
 });
 
 // Preferences endpoint (for theme, sidebar state, etc.)
-app.get('/api/data/preferences', async (req, res) => {
+app.get('/api/data/preferences', requireAuth, async (req, res) => {
   try {
     await ensureDataDir();
     if (!existsSync(PREFERENCES_FILE)) {
@@ -431,7 +565,7 @@ app.get('/api/data/preferences', async (req, res) => {
   }
 });
 
-app.post('/api/data/preferences', async (req, res) => {
+app.post('/api/data/preferences', requireAuth, async (req, res) => {
   try {
     await ensureDataDir();
     const currentPrefs = existsSync(PREFERENCES_FILE) ? await readJsonFile(PREFERENCES_FILE) : {};

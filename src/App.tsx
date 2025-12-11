@@ -1,11 +1,13 @@
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import AppContent from './components/AppContent';
+import LoginPage from './components/LoginPage';
 import { Feed } from './types';
 import { storage } from './utils/storage';
 import { preferences } from './utils/preferences';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = checking
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
   
@@ -15,8 +17,50 @@ function App() {
   // Mobile drawer state (separate from desktop collapse, local to device)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
-  // Load sidebar state from server on mount
+  // Check authentication status on mount
   useEffect(() => {
+    const checkAuth = async () => {
+      console.log('[APP] checkAuth called, pathname:', window.location.pathname);
+      
+      // Don't check auth if we're on the login page
+      if (window.location.pathname === '/login') {
+        console.log('[APP] On login page, setting isAuthenticated to false');
+        setIsAuthenticated(false);
+        return;
+      }
+
+      try {
+        console.log('[APP] Calling /api/me...');
+        const res = await fetch('/api/me', {
+          credentials: 'include',
+        });
+        console.log('[APP] /api/me response status:', res.status);
+        setIsAuthenticated(res.ok);
+        if (!res.ok) {
+          console.log('[APP] /api/me returned non-ok, redirecting to /login');
+          // Only redirect if we're not already on login page
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        } else {
+          console.log('[APP] /api/me successful, user is authenticated');
+        }
+      } catch (error) {
+        console.error('[APP] Auth check error:', error);
+        setIsAuthenticated(false);
+        // Don't redirect if we're already on login page
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+    };
+    checkAuth();
+  }, []);
+
+  // Load sidebar state from server on mount (only if authenticated)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
     const loadSidebarState = async () => {
       try {
         const saved = await preferences.getSidebarCollapsed();
@@ -28,7 +72,7 @@ function App() {
       }
     };
     loadSidebarState();
-  }, []);
+  }, [isAuthenticated]);
 
   const toggleSidebar = async () => {
     const newState = !isSidebarCollapsed;
@@ -53,13 +97,15 @@ function App() {
 
 
   useEffect(() => {
-    // Load feeds
-    const loadFeeds = async () => {
-      const loadedFeeds = await storage.getFeeds();
-      setFeeds(loadedFeeds);
-    };
-    loadFeeds();
-  }, []);
+    // Load feeds only if authenticated
+    if (isAuthenticated) {
+      const loadFeeds = async () => {
+        const loadedFeeds = await storage.getFeeds();
+        setFeeds(loadedFeeds);
+      };
+      loadFeeds();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     // Clear selected feed if it no longer exists
@@ -161,19 +207,48 @@ function App() {
     }
   };
 
+  // Show loading state while checking auth
+  if (isAuthenticated === null) {
+    return (
+      <div 
+        className="min-h-screen flex items-center justify-center"
+        style={{ 
+          backgroundColor: 'var(--theme-bg)',
+          color: 'var(--theme-text)'
+        }}
+      >
+        <div className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <BrowserRouter>
-      <AppContent
-        feeds={feeds}
-        selectedFeedId={selectedFeedId}
-        setSelectedFeedId={setSelectedFeedId}
-        handleFeedsChange={handleFeedsChange}
-        handleRefreshAllFeeds={handleRefreshAllFeeds}
-        isSidebarCollapsed={isSidebarCollapsed}
-        toggleSidebar={toggleSidebar}
-        isMobileDrawerOpen={isMobileDrawerOpen}
-        setIsMobileDrawerOpen={setIsMobileDrawerOpen}
-      />
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
+            isAuthenticated ? (
+              <AppContent
+                feeds={feeds}
+                selectedFeedId={selectedFeedId}
+                setSelectedFeedId={setSelectedFeedId}
+                handleFeedsChange={handleFeedsChange}
+                handleRefreshAllFeeds={handleRefreshAllFeeds}
+                isSidebarCollapsed={isSidebarCollapsed}
+                toggleSidebar={toggleSidebar}
+                isMobileDrawerOpen={isMobileDrawerOpen}
+                setIsMobileDrawerOpen={setIsMobileDrawerOpen}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }

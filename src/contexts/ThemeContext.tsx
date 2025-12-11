@@ -10,28 +10,48 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light');
-  const [isLoading, setIsLoading] = useState(true);
+  // Initialize theme from localStorage immediately to avoid flashing
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const saved = localStorage.getItem('readerTheme');
+    const initialTheme = (saved as Theme) || 'light';
+    // Apply theme immediately to prevent flash
+    if (typeof document !== 'undefined') {
+      applyTheme(initialTheme);
+    }
+    return initialTheme;
+  });
 
-  // Load theme from server on mount
+  // Load theme from server on mount (only if not on login page)
   useEffect(() => {
     const loadTheme = async () => {
+      // Skip API call if we're on the login page
+      if (window.location.pathname === '/login') {
+        return;
+      }
+
+      // Wait a bit to ensure auth check has completed
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check again if we're still on login page (auth might have redirected)
+      if (window.location.pathname === '/login') {
+        return;
+      }
+
       try {
         const savedTheme = await preferences.getTheme();
-        setThemeState(savedTheme);
-        applyTheme(savedTheme);
-      } catch (error) {
-        // Fallback to localStorage if API fails
-        const saved = localStorage.getItem('readerTheme');
-        const fallbackTheme = (saved as Theme) || 'light';
-        setThemeState(fallbackTheme);
-        applyTheme(fallbackTheme);
-      } finally {
-        setIsLoading(false);
+        if (savedTheme !== theme) {
+          setThemeState(savedTheme);
+          applyTheme(savedTheme);
+        }
+      } catch (error: any) {
+        // Silently fail for 401 errors (expected before authentication)
+        if (!error?.isUnauthorized && !error?.suppressWarning) {
+          console.warn('Failed to load theme from server, using localStorage:', error);
+        }
       }
     };
     loadTheme();
-  }, []);
+  }, []); // Empty deps - only run once on mount
 
   const setTheme = async (newTheme: Theme) => {
     setThemeState(newTheme);
@@ -46,11 +66,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Apply theme whenever it changes
   useEffect(() => {
-    if (!isLoading) {
-      applyTheme(theme);
-    }
-  }, [theme, isLoading]);
+    applyTheme(theme);
+  }, [theme]);
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
