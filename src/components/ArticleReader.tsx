@@ -108,14 +108,14 @@ export default function ArticleReader() {
   };
 
   const handleStatusChange = async (newStatus: FeedItem['status']) => {
-    const items = await storage.getFeedItems();
-    const updated = items.map((i) =>
-      i.id === item.id ? { ...i, status: newStatus } : i
-    );
-    await storage.saveFeedItems(updated);
-    setItem({ ...item, status: newStatus });
-    // Trigger event for other components to update
-    window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    try {
+      await storage.updateItemStatus(item.id, newStatus);
+      setItem({ ...item, status: newStatus });
+      // Trigger event for other components to update
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    } catch (error) {
+      console.error('Error updating item status:', error);
+    }
   };
 
   const handleDelete = async () => {
@@ -151,29 +151,15 @@ export default function ArticleReader() {
       console.log('AI summary before storing - Length (characters):', summary.length);
       console.log('AI summary full text:', summary);
       
-      // Always get the latest from storage before updating
-      const items = await storage.getFeedItems();
-      const currentItem = items.find(i => i.id === item.id);
-      
-      // Only update if summary is still missing and we're still on the same article
+      // Check if we're still on the same article
       const currentRouteId = id ? decodeURIComponent(id) : null;
-      if (currentItem && needsSummary(currentItem) && 
-          (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-        const updated = items.map((i) =>
-          i.id === item.id ? { ...i, aiSummary: summary } : i
-        );
-        await storage.saveFeedItems(updated);
-        const updatedItem = updated.find(i => i.id === item.id);
+      if (currentRouteId === item.id || currentRouteId === item.url || id === item.id) {
+        // Use the new API to update the summary
+        await storage.updateItemSummary(item.id, summary);
         
-        // Debug: Log what we're storing
-        if (updatedItem) {
-          console.log('AI summary stored in item - Length (characters):', (updatedItem.aiSummary || '').length);
-          console.log('AI summary stored text:', updatedItem.aiSummary);
-        }
+        console.log('AI summary stored - Length (characters):', summary.length);
         
-        if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-          setItem(updatedItem);
-        }
+        setItem({ ...item, aiSummary: summary });
       }
     } catch (error) {
       console.error('Error generating summary:', error);
@@ -191,19 +177,14 @@ export default function ArticleReader() {
         console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
       }
       
-      // Only set fallback if summary is still missing and we're still on the same article
-      const items = await storage.getFeedItems();
-      const currentItem = items.find(i => i.id === item.id);
+      // Set fallback error message
       const currentRouteId = id ? decodeURIComponent(id) : null;
-      if (currentItem && needsSummary(currentItem) &&
-          (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-        const updated = items.map((i) =>
-          i.id === item.id ? { ...i, aiSummary: 'Summary not available.' } : i
-        );
-        await storage.saveFeedItems(updated);
-        const updatedItem = updated.find(i => i.id === item.id);
-        if (updatedItem && (currentRouteId === item.id || currentRouteId === item.url || id === item.id)) {
-          setItem(updatedItem);
+      if (currentRouteId === item.id || currentRouteId === item.url || id === item.id) {
+        try {
+          await storage.updateItemSummary(item.id, 'Summary not available.');
+          setItem({ ...item, aiSummary: 'Summary not available.' });
+        } catch (updateError) {
+          console.error('Error saving fallback summary:', updateError);
         }
       }
     } finally {

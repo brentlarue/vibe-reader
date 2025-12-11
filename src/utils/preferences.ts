@@ -8,14 +8,19 @@ export interface Preferences {
   sidebarCollapsed?: boolean;
 }
 
-// API request helper
-const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+// localStorage key for local cache
+const PREFERENCES_KEY = 'vibe-reader-preferences';
+
+/**
+ * Make an API request with proper error handling
+ */
+const apiRequest = async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
   
-  const response = await apiFetch(`/api/data/${endpoint}`, {
+  const response = await apiFetch(`/api/${endpoint}`, {
     ...options,
     headers,
   });
@@ -28,8 +33,10 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
   return response.json();
 };
 
-// Fallback to localStorage if API fails
-const fallbackToLocalStorage = (key: string, defaultValue: any) => {
+/**
+ * Fallback to localStorage if API fails
+ */
+const fallbackToLocalStorage = <T>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
   const stored = localStorage.getItem(key);
   if (!stored) return defaultValue;
@@ -40,35 +47,43 @@ const fallbackToLocalStorage = (key: string, defaultValue: any) => {
   }
 };
 
-const saveToLocalStorage = (key: string, value: any) => {
+/**
+ * Save to localStorage for local caching
+ */
+const saveToLocalStorage = (key: string, value: unknown): void => {
   if (typeof window !== 'undefined') {
     localStorage.setItem(key, JSON.stringify(value));
   }
 };
 
 export const preferences = {
+  /**
+   * Get all preferences from the server
+   */
   get: async (): Promise<Preferences> => {
     try {
-      const prefs = await apiRequest('preferences');
-      // Sync to localStorage as backup
-      saveToLocalStorage('vibe-reader-preferences', prefs);
+      const prefs = await apiRequest<Preferences>('preferences');
+      saveToLocalStorage(PREFERENCES_KEY, prefs);
       return prefs;
-    } catch (error: any) {
-      // Suppress warnings for expected 401 errors (user not authenticated yet)
-      if (!error?.suppressWarning && !error?.isUnauthorized) {
+    } catch (error: unknown) {
+      const err = error as { suppressWarning?: boolean; isUnauthorized?: boolean };
+      if (!err?.suppressWarning && !err?.isUnauthorized) {
         console.warn('Failed to fetch preferences from API, using local storage:', error);
       }
-      return fallbackToLocalStorage('vibe-reader-preferences', {});
+      return fallbackToLocalStorage<Preferences>(PREFERENCES_KEY, {});
     }
   },
 
+  /**
+   * Update preferences on the server
+   */
   set: async (updates: Partial<Preferences>): Promise<void> => {
     // Get current preferences and merge
     const current = await preferences.get();
     const updated = { ...current, ...updates };
     
     // Save to localStorage first for immediate UI update
-    saveToLocalStorage('vibe-reader-preferences', updated);
+    saveToLocalStorage(PREFERENCES_KEY, updated);
     
     try {
       await apiRequest('preferences', {
@@ -81,22 +96,33 @@ export const preferences = {
     }
   },
 
+  /**
+   * Get current theme
+   */
   getTheme: async (): Promise<'light' | 'dark' | 'sepia' | 'mint'> => {
     const prefs = await preferences.get();
     return prefs.theme || 'light';
   },
 
+  /**
+   * Set theme
+   */
   setTheme: async (theme: 'light' | 'dark' | 'sepia' | 'mint'): Promise<void> => {
     await preferences.set({ theme });
   },
 
+  /**
+   * Get sidebar collapsed state
+   */
   getSidebarCollapsed: async (): Promise<boolean> => {
     const prefs = await preferences.get();
     return prefs.sidebarCollapsed || false;
   },
 
+  /**
+   * Set sidebar collapsed state
+   */
   setSidebarCollapsed: async (collapsed: boolean): Promise<void> => {
     await preferences.set({ sidebarCollapsed: collapsed });
   },
 };
-

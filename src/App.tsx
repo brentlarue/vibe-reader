@@ -151,7 +151,6 @@ function App() {
     }
 
     const existingItems = await storage.getFeedItems();
-    const newItems: typeof existingItems = [];
 
     // Fetch all RSS feeds in parallel
     const { fetchRss } = await import('./utils/rss');
@@ -165,21 +164,28 @@ function App() {
 
         if (feedItems.length > 0) {
           console.log(`Refresh feed ${feed.url}: got ${feedItems.length} new items after deduplication`);
-          newItems.push(...feedItems);
+          
+          // Upsert items for this feed
+          await storage.upsertFeedItems(feed.id, feedItems.map(item => ({
+            ...item,
+            source: feedTitle,
+          })));
         } else {
           console.log(`Refresh feed ${feed.url}: no new items`);
         }
 
         // Update rssTitle if it's missing (for backwards compatibility with old feeds)
-        // Don't update feed name during refresh - preserve the existing name
         if (!feed.rssTitle) {
-          const allFeeds = await storage.getFeeds();
-          const feedIndex = allFeeds.findIndex(f => f.id === feed.id);
-          if (feedIndex !== -1) {
-            allFeeds[feedIndex].rssTitle = feedTitle;
-            await storage.saveFeeds(allFeeds);
-            // Update state to reflect the change
+          try {
+            const { apiFetch } = await import('./utils/apiFetch');
+            await apiFetch(`/api/feeds/${feed.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ rssTitle: feedTitle }),
+            });
             handleFeedsChange();
+          } catch (updateError) {
+            console.error('Error updating feed rssTitle:', updateError);
           }
         }
       } catch (error) {
@@ -188,15 +194,9 @@ function App() {
     });
 
     await Promise.all(fetchPromises);
-
-    // Save items (either replace if cleared, or merge with existing)
-    if (newItems.length > 0) {
-      const allItems = clearFirst ? newItems : [...existingItems, ...newItems];
-      await storage.saveFeedItems(allItems);
-      
-      // Trigger a refresh of FeedList components
-      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-    }
+    
+    // Trigger a refresh of FeedList components
+    window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
   };
 
   // Show loading state while checking auth

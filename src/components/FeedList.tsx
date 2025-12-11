@@ -173,11 +173,13 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
   const handleDeleteAll = async () => {
     if (status === 'archived') {
       if (confirm('Are you sure you want to delete all archived items? This action cannot be undone.')) {
-        const allItems = await storage.getFeedItems();
-        const filtered = allItems.filter(item => item.status !== 'archived');
-        await storage.saveFeedItems(filtered);
-        loadItems();
-        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        try {
+          await storage.deleteItemsByStatus('archived');
+          loadItems();
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        } catch (error) {
+          console.error('Error deleting archived items:', error);
+        }
       }
     }
   };

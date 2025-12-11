@@ -8,6 +8,10 @@ import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
 
+// Supabase repository (database layer)
+import { isSupabaseConfigured } from './db/supabaseClient.js';
+import * as feedRepo from './db/feedRepository.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -593,8 +597,9 @@ ${truncatedContent}`
 });
 
 // Data API endpoints for cross-device sync
+// Uses Supabase if configured, otherwise falls back to JSON files
 
-// Helper functions to read/write JSON files
+// Helper functions to read/write JSON files (fallback when Supabase not configured)
 async function readJsonFile(filePath) {
   try {
     const data = await fs.readFile(filePath, 'utf-8');
@@ -615,10 +620,18 @@ async function writeJsonFile(filePath, data) {
   }
 }
 
-// Data API endpoints (protected)
-// Feeds endpoints
-app.get('/api/data/feeds', requireAuth, async (req, res) => {
+// ============================================================================
+// FEEDS API
+// ============================================================================
+
+// GET /api/feeds - Get all feeds
+app.get('/api/feeds', requireAuth, async (req, res) => {
   try {
+    if (isSupabaseConfigured()) {
+      const feeds = await feedRepo.getFeeds();
+      return res.json(feeds);
+    }
+    // Fallback to file
     await ensureDataDir();
     const feeds = await readJsonFile(FEEDS_FILE);
     res.json(feeds);
@@ -628,23 +641,149 @@ app.get('/api/data/feeds', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/data/feeds', requireAuth, async (req, res) => {
+// POST /api/feeds - Create a new feed
+app.post('/api/feeds', requireAuth, async (req, res) => {
   try {
+    const { url, displayName, rssTitle, sourceType = 'rss' } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    if (isSupabaseConfigured()) {
+      // Check if feed already exists
+      const existing = await feedRepo.getFeedByUrl(url);
+      if (existing) {
+        return res.status(409).json({ error: 'Feed with this URL already exists', feed: existing });
+      }
+      
+      const feed = await feedRepo.createFeed({
+        url,
+        displayName: displayName || url,
+        rssTitle,
+        sourceType,
+      });
+      return res.json(feed);
+    }
+    
+    // Fallback to file
     await ensureDataDir();
-    const feeds = Array.isArray(req.body) ? req.body : [];
+    const feeds = await readJsonFile(FEEDS_FILE);
+    if (feeds.some(f => f.url === url)) {
+      return res.status(409).json({ error: 'Feed with this URL already exists' });
+    }
+    const newFeed = {
+      id: crypto.randomUUID(),
+      name: displayName || url,
+      url,
+      sourceType,
+      rssTitle,
+    };
+    feeds.push(newFeed);
     await writeJsonFile(FEEDS_FILE, feeds);
-    res.json({ success: true });
+    res.json(newFeed);
   } catch (error) {
-    console.error('Error saving feeds:', error);
-    res.status(500).json({ error: 'Failed to save feeds' });
+    console.error('Error creating feed:', error);
+    res.status(500).json({ error: 'Failed to create feed' });
   }
 });
 
-// Feed items endpoints
-app.get('/api/data/feed-items', requireAuth, async (req, res) => {
+// PUT /api/feeds/:feedId - Update a feed
+app.put('/api/feeds/:feedId', requireAuth, async (req, res) => {
   try {
+    const { feedId } = req.params;
+    const { displayName, rssTitle } = req.body;
+
+    if (isSupabaseConfigured()) {
+      let feed;
+      if (displayName !== undefined) {
+        feed = await feedRepo.updateFeedName(feedId, displayName);
+      }
+      if (rssTitle !== undefined) {
+        feed = await feedRepo.updateFeedRssTitle(feedId, rssTitle);
+      }
+      return res.json(feed || { success: true });
+    }
+    
+    // Fallback to file
     await ensureDataDir();
+    const feeds = await readJsonFile(FEEDS_FILE);
+    const index = feeds.findIndex(f => f.id === feedId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Feed not found' });
+    }
+    if (displayName !== undefined) {
+      feeds[index].name = displayName;
+    }
+    if (rssTitle !== undefined) {
+      feeds[index].rssTitle = rssTitle;
+    }
+    await writeJsonFile(FEEDS_FILE, feeds);
+    res.json(feeds[index]);
+  } catch (error) {
+    console.error('Error updating feed:', error);
+    res.status(500).json({ error: 'Failed to update feed' });
+  }
+});
+
+// DELETE /api/feeds/:feedId - Delete a feed
+app.delete('/api/feeds/:feedId', requireAuth, async (req, res) => {
+  try {
+    const { feedId } = req.params;
+
+    if (isSupabaseConfigured()) {
+      await feedRepo.deleteFeed(feedId);
+      return res.json({ success: true });
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const feeds = await readJsonFile(FEEDS_FILE);
+    const filtered = feeds.filter(f => f.id !== feedId);
+    await writeJsonFile(FEEDS_FILE, filtered);
+    
+    // Also remove related items
     const items = await readJsonFile(FEED_ITEMS_FILE);
+    const filteredItems = items.filter(i => i.feedId !== feedId);
+    await writeJsonFile(FEED_ITEMS_FILE, filteredItems);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting feed:', error);
+    res.status(500).json({ error: 'Failed to delete feed' });
+  }
+});
+
+// ============================================================================
+// FEED ITEMS API
+// ============================================================================
+
+// GET /api/items - Get all feed items (optionally filtered)
+app.get('/api/items', requireAuth, async (req, res) => {
+  try {
+    const { status, feedId, limit } = req.query;
+
+    if (isSupabaseConfigured()) {
+      const items = await feedRepo.getFeedItems({
+        status,
+        feedId,
+        limit: limit ? parseInt(limit) : undefined,
+      });
+      return res.json(items);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    let items = await readJsonFile(FEED_ITEMS_FILE);
+    if (status) {
+      items = items.filter(i => i.status === status);
+    }
+    if (feedId) {
+      items = items.filter(i => i.feedId === feedId);
+    }
+    if (limit) {
+      items = items.slice(0, parseInt(limit));
+    }
     res.json(items);
   } catch (error) {
     console.error('Error reading feed items:', error);
@@ -652,21 +791,235 @@ app.get('/api/data/feed-items', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/data/feed-items', requireAuth, async (req, res) => {
+// GET /api/items/:itemId - Get a single feed item
+app.get('/api/items/:itemId', requireAuth, async (req, res) => {
   try {
+    const { itemId } = req.params;
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.getFeedItem(itemId);
+      if (!item) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+      return res.json(item);
+    }
+    
+    // Fallback to file
     await ensureDataDir();
-    const items = Array.isArray(req.body) ? req.body : [];
-    await writeJsonFile(FEED_ITEMS_FILE, items);
-    res.json({ success: true });
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const item = items.find(i => i.id === itemId);
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json(item);
   } catch (error) {
-    console.error('Error saving feed items:', error);
-    res.status(500).json({ error: 'Failed to save feed items' });
+    console.error('Error reading feed item:', error);
+    res.status(500).json({ error: 'Failed to read feed item' });
   }
 });
 
-// Preferences endpoint (for theme, sidebar state, etc.)
-app.get('/api/data/preferences', requireAuth, async (req, res) => {
+// POST /api/feeds/:feedId/items - Upsert items for a feed
+app.post('/api/feeds/:feedId/items', requireAuth, async (req, res) => {
   try {
+    const { feedId } = req.params;
+    const items = req.body;
+
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: 'Items must be an array' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const upserted = await feedRepo.upsertFeedItems(feedId, items);
+      return res.json(upserted);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const allItems = await readJsonFile(FEED_ITEMS_FILE);
+    
+    // Upsert logic
+    for (const item of items) {
+      const existingIndex = allItems.findIndex(i => 
+        i.feedId === feedId && i.url === item.url
+      );
+      if (existingIndex >= 0) {
+        // Update existing
+        allItems[existingIndex] = { ...allItems[existingIndex], ...item, feedId };
+      } else {
+        // Insert new
+        allItems.push({
+          id: crypto.randomUUID(),
+          feedId,
+          ...item,
+        });
+      }
+    }
+    
+    await writeJsonFile(FEED_ITEMS_FILE, allItems);
+    res.json({ success: true, count: items.length });
+  } catch (error) {
+    console.error('Error upserting feed items:', error);
+    res.status(500).json({ error: 'Failed to upsert feed items' });
+  }
+});
+
+// POST /api/items/:itemId/status - Update item status
+app.post('/api/items/:itemId/status', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ['inbox', 'saved', 'bookmarked', 'archived'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.updateFeedItemStatus(itemId, status);
+      return res.json(item);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    items[index].status = status;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('Error updating item status:', error);
+    res.status(500).json({ error: 'Failed to update item status' });
+  }
+});
+
+// POST /api/items/:itemId/summary - Update item AI summary
+app.post('/api/items/:itemId/summary', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { summary } = req.body;
+
+    if (typeof summary !== 'string') {
+      return res.status(400).json({ error: 'Summary must be a string' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.updateFeedItemSummary(itemId, summary);
+      return res.json(item);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    items[index].aiSummary = summary;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('Error updating item summary:', error);
+    res.status(500).json({ error: 'Failed to update item summary' });
+  }
+});
+
+// POST /api/items/:itemId/paywall - Update item paywall status
+app.post('/api/items/:itemId/paywall', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { paywallStatus } = req.body;
+
+    const validStatuses = ['unknown', 'free', 'paid'];
+    if (!validStatuses.includes(paywallStatus)) {
+      return res.status(400).json({ error: `Invalid paywall status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.updateFeedItemPaywallStatus(itemId, paywallStatus);
+      return res.json(item);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    items[index].paywallStatus = paywallStatus;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('Error updating item paywall status:', error);
+    res.status(500).json({ error: 'Failed to update item paywall status' });
+  }
+});
+
+// DELETE /api/items/:itemId - Delete a single item
+app.delete('/api/items/:itemId', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    if (isSupabaseConfigured()) {
+      await feedRepo.deleteFeedItem(itemId);
+      return res.json({ success: true });
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const filtered = items.filter(i => i.id !== itemId);
+    await writeJsonFile(FEED_ITEMS_FILE, filtered);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting feed item:', error);
+    res.status(500).json({ error: 'Failed to delete feed item' });
+  }
+});
+
+// DELETE /api/items - Delete items by status (for bulk delete, e.g., clear archive)
+app.delete('/api/items', requireAuth, async (req, res) => {
+  try {
+    const { status } = req.query;
+
+    if (!status) {
+      return res.status(400).json({ error: 'Status query parameter is required' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const count = await feedRepo.deleteFeedItemsByStatus(status);
+      return res.json({ success: true, count });
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const filtered = items.filter(i => i.status !== status);
+    const deletedCount = items.length - filtered.length;
+    await writeJsonFile(FEED_ITEMS_FILE, filtered);
+    res.json({ success: true, count: deletedCount });
+  } catch (error) {
+    console.error('Error deleting feed items:', error);
+    res.status(500).json({ error: 'Failed to delete feed items' });
+  }
+});
+
+// ============================================================================
+// PREFERENCES API
+// ============================================================================
+
+// GET /api/preferences - Get all preferences
+app.get('/api/preferences', requireAuth, async (req, res) => {
+  try {
+    if (isSupabaseConfigured()) {
+      const prefs = await feedRepo.getPreferences();
+      return res.json(prefs);
+    }
+    
+    // Fallback to file
     await ensureDataDir();
     if (!existsSync(PREFERENCES_FILE)) {
       await fs.writeFile(PREFERENCES_FILE, JSON.stringify({}), 'utf-8');
@@ -679,11 +1032,169 @@ app.get('/api/data/preferences', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/data/preferences', requireAuth, async (req, res) => {
+// POST /api/preferences - Update preferences
+app.post('/api/preferences', requireAuth, async (req, res) => {
   try {
+    const updates = req.body;
+
+    if (isSupabaseConfigured()) {
+      await feedRepo.updatePreferences(updates);
+      return res.json({ success: true });
+    }
+    
+    // Fallback to file
     await ensureDataDir();
     const currentPrefs = existsSync(PREFERENCES_FILE) ? await readJsonFile(PREFERENCES_FILE) : {};
-    const updatedPrefs = { ...currentPrefs, ...req.body };
+    const updatedPrefs = { ...currentPrefs, ...updates };
+    await writeJsonFile(PREFERENCES_FILE, updatedPrefs);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+    res.status(500).json({ error: 'Failed to save preferences' });
+  }
+});
+
+// ============================================================================
+// LEGACY DATA ENDPOINTS (for backward compatibility during migration)
+// These mirror the old /api/data/* routes but use the new backend
+// ============================================================================
+
+// GET /api/data/feeds - Legacy endpoint
+app.get('/api/data/feeds', requireAuth, async (req, res) => {
+  try {
+    if (isSupabaseConfigured()) {
+      const feeds = await feedRepo.getFeeds();
+      return res.json(feeds);
+    }
+    await ensureDataDir();
+    const feeds = await readJsonFile(FEEDS_FILE);
+    res.json(feeds);
+  } catch (error) {
+    console.error('Error reading feeds:', error);
+    res.status(500).json({ error: 'Failed to read feeds' });
+  }
+});
+
+// POST /api/data/feeds - Legacy endpoint (bulk save)
+app.post('/api/data/feeds', requireAuth, async (req, res) => {
+  try {
+    // This is the bulk save operation from the old API
+    // For Supabase, we need to handle this differently
+    const feeds = Array.isArray(req.body) ? req.body : [];
+    
+    if (isSupabaseConfigured()) {
+      // For each feed, upsert it
+      for (const feed of feeds) {
+        const existing = await feedRepo.getFeedByUrl(feed.url);
+        if (!existing) {
+          await feedRepo.createFeed({
+            url: feed.url,
+            displayName: feed.name,
+            rssTitle: feed.rssTitle,
+            sourceType: feed.sourceType || 'rss',
+          });
+        } else if (feed.name !== existing.name) {
+          await feedRepo.updateFeedName(existing.id, feed.name);
+        }
+      }
+      return res.json({ success: true });
+    }
+    
+    await ensureDataDir();
+    await writeJsonFile(FEEDS_FILE, feeds);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving feeds:', error);
+    res.status(500).json({ error: 'Failed to save feeds' });
+  }
+});
+
+// GET /api/data/feed-items - Legacy endpoint
+app.get('/api/data/feed-items', requireAuth, async (req, res) => {
+  try {
+    if (isSupabaseConfigured()) {
+      const items = await feedRepo.getFeedItems();
+      return res.json(items);
+    }
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    res.json(items);
+  } catch (error) {
+    console.error('Error reading feed items:', error);
+    res.status(500).json({ error: 'Failed to read feed items' });
+  }
+});
+
+// POST /api/data/feed-items - Legacy endpoint (bulk save)
+app.post('/api/data/feed-items', requireAuth, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body) ? req.body : [];
+    
+    if (isSupabaseConfigured()) {
+      // Group items by feedId for bulk upsert
+      const itemsByFeed = {};
+      for (const item of items) {
+        // Try to find the feed by matching source/rssTitle
+        const feeds = await feedRepo.getFeeds();
+        let feed = feeds.find(f => f.rssTitle === item.source || f.name === item.source);
+        
+        if (feed) {
+          if (!itemsByFeed[feed.id]) {
+            itemsByFeed[feed.id] = [];
+          }
+          itemsByFeed[feed.id].push(item);
+        }
+      }
+      
+      // Upsert items for each feed
+      for (const [feedId, feedItems] of Object.entries(itemsByFeed)) {
+        await feedRepo.upsertFeedItems(feedId, feedItems);
+      }
+      
+      return res.json({ success: true });
+    }
+    
+    await ensureDataDir();
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving feed items:', error);
+    res.status(500).json({ error: 'Failed to save feed items' });
+  }
+});
+
+// GET /api/data/preferences - Legacy endpoint
+app.get('/api/data/preferences', requireAuth, async (req, res) => {
+  try {
+    if (isSupabaseConfigured()) {
+      const prefs = await feedRepo.getPreferences();
+      return res.json(prefs);
+    }
+    await ensureDataDir();
+    if (!existsSync(PREFERENCES_FILE)) {
+      await fs.writeFile(PREFERENCES_FILE, JSON.stringify({}), 'utf-8');
+    }
+    const preferences = await readJsonFile(PREFERENCES_FILE);
+    res.json(preferences);
+  } catch (error) {
+    console.error('Error reading preferences:', error);
+    res.status(500).json({ error: 'Failed to read preferences' });
+  }
+});
+
+// POST /api/data/preferences - Legacy endpoint
+app.post('/api/data/preferences', requireAuth, async (req, res) => {
+  try {
+    const updates = req.body;
+    
+    if (isSupabaseConfigured()) {
+      await feedRepo.updatePreferences(updates);
+      return res.json({ success: true });
+    }
+    
+    await ensureDataDir();
+    const currentPrefs = existsSync(PREFERENCES_FILE) ? await readJsonFile(PREFERENCES_FILE) : {};
+    const updatedPrefs = { ...currentPrefs, ...updates };
     await writeJsonFile(PREFERENCES_FILE, updatedPrefs);
     res.json({ success: true });
   } catch (error) {

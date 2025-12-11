@@ -13,14 +13,14 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
 
   const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
-    const items = await storage.getFeedItems();
-    const updated = items.map((i) =>
-      i.id === item.id ? { ...i, status: newStatus } : i
-    );
-    await storage.saveFeedItems(updated);
-    onStatusChange();
-    // Trigger event for other components
-    window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    try {
+      await storage.updateItemStatus(item.id, newStatus);
+      onStatusChange();
+      // Trigger event for other components
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    } catch (error) {
+      console.error('Error updating item status:', error);
+    }
   };
 
   const handleDelete = async (e: React.MouseEvent) => {

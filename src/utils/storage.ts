@@ -1,18 +1,24 @@
 import { FeedItem, Feed } from '../types';
+import { apiFetch } from './apiFetch';
 
+// localStorage keys for local cache (used as fallback)
 const FEED_ITEMS_KEY = 'vibe-reader-feed-items';
 const FEEDS_KEY = 'vibe-reader-feeds';
 
-import { apiFetch } from './apiFetch';
+// ============================================================================
+// API Helpers
+// ============================================================================
 
-// API request helper
-const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+/**
+ * Make an API request with proper error handling
+ */
+const apiRequest = async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
   
-  const response = await apiFetch(`/api/data/${endpoint}`, {
+  const response = await apiFetch(`/api/${endpoint}`, {
     ...options,
     headers,
   });
@@ -25,8 +31,10 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
   return response.json();
 };
 
-// Fallback to localStorage if API fails
-const fallbackToLocalStorage = (key: string, defaultValue: any) => {
+/**
+ * Fallback to localStorage if API fails
+ */
+const fallbackToLocalStorage = <T>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
   const stored = localStorage.getItem(key);
   if (!stored) return defaultValue;
@@ -37,67 +45,126 @@ const fallbackToLocalStorage = (key: string, defaultValue: any) => {
   }
 };
 
-const saveToLocalStorage = (key: string, value: any) => {
+/**
+ * Save to localStorage for local caching
+ */
+const saveToLocalStorage = (key: string, value: unknown): void => {
   if (typeof window !== 'undefined') {
     localStorage.setItem(key, JSON.stringify(value));
   }
 };
 
+// ============================================================================
+// Storage API
+// ============================================================================
+
 export const storage = {
-  getFeedItems: async (): Promise<FeedItem[]> => {
+  // ==========================================================================
+  // FEEDS
+  // ==========================================================================
+
+  /**
+   * Get all feeds from the server
+   */
+  getFeeds: async (): Promise<Feed[]> => {
     try {
-      const items = await apiRequest('feed-items');
-      saveToLocalStorage(FEED_ITEMS_KEY, items);
-      return items;
-    } catch (error: any) {
-      // Suppress warnings for expected 401 errors (user not authenticated yet)
-      if (!error?.suppressWarning && !error?.isUnauthorized) {
-        console.warn('Failed to fetch feed items from API, using local storage:', error);
+      const feeds = await apiRequest<Feed[]>('feeds');
+      saveToLocalStorage(FEEDS_KEY, feeds);
+      return feeds;
+    } catch (error: unknown) {
+      const err = error as { suppressWarning?: boolean; isUnauthorized?: boolean };
+      if (!err?.suppressWarning && !err?.isUnauthorized) {
+        console.warn('Failed to fetch feeds from API, using local storage:', error);
       }
-      return fallbackToLocalStorage(FEED_ITEMS_KEY, []);
+      return fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
     }
   },
 
-  saveFeedItems: async (items: FeedItem[]): Promise<void> => {
-    // Save to localStorage first for immediate UI update
-    saveToLocalStorage(FEED_ITEMS_KEY, items);
-    
+  /**
+   * Get a single feed by ID
+   */
+  getFeed: async (feedId: string): Promise<Feed | null> => {
+    const feeds = await storage.getFeeds();
+    return feeds.find(f => f.id === feedId) || null;
+  },
+
+  /**
+   * Add a new feed
+   */
+  addFeed: async (feed: { url: string; displayName?: string; rssTitle?: string; sourceType?: string }): Promise<Feed> => {
     try {
-      await apiRequest('feed-items', {
+      const newFeed = await apiRequest<Feed>('feeds', {
         method: 'POST',
-        body: JSON.stringify(items),
+        body: JSON.stringify({
+          url: feed.url,
+          displayName: feed.displayName || feed.url,
+          rssTitle: feed.rssTitle,
+          sourceType: feed.sourceType || 'rss',
+        }),
       });
+      
+      // Update local cache
+      const feeds = fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
+      feeds.push(newFeed);
+      saveToLocalStorage(FEEDS_KEY, feeds);
+      
+      return newFeed;
     } catch (error) {
-      console.error('Failed to save feed items to API:', error);
+      console.error('Failed to add feed:', error);
       throw error;
     }
   },
 
-  getFeedItem: async (id: string): Promise<FeedItem | null> => {
-    const items = await storage.getFeedItems();
-    return items.find(item => item.id === id) || null;
-  },
-
-  getFeeds: async (): Promise<Feed[]> => {
+  /**
+   * Update a feed's display name
+   */
+  updateFeedName: async (feedId: string, newName: string): Promise<void> => {
     try {
-      const feeds = await apiRequest('feeds');
-      saveToLocalStorage(FEEDS_KEY, feeds);
-      return feeds;
-    } catch (error: any) {
-      // Suppress warnings for expected 401 errors (user not authenticated yet)
-      if (!error?.suppressWarning && !error?.isUnauthorized) {
-        console.warn('Failed to fetch feeds from API, using local storage:', error);
-      }
-      return fallbackToLocalStorage(FEEDS_KEY, []);
+      await apiRequest(`feeds/${feedId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ displayName: newName.trim() }),
+      });
+      
+      // Update local cache
+      const feeds = fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
+      const updated = feeds.map(f => 
+        f.id === feedId ? { ...f, name: newName.trim() } : f
+      );
+      saveToLocalStorage(FEEDS_KEY, updated);
+    } catch (error) {
+      console.error('Failed to update feed name:', error);
+      throw error;
     }
   },
 
+  /**
+   * Remove a feed and optionally its items
+   */
+  removeFeed: async (feedId: string): Promise<void> => {
+    try {
+      await apiRequest(`feeds/${feedId}`, {
+        method: 'DELETE',
+      });
+      
+      // Update local cache
+      const feeds = fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
+      const filtered = feeds.filter(f => f.id !== feedId);
+      saveToLocalStorage(FEEDS_KEY, filtered);
+    } catch (error) {
+      console.error('Failed to remove feed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Legacy: Save all feeds (for backward compatibility)
+   * This now syncs with the server properly
+   */
   saveFeeds: async (feeds: Feed[]): Promise<void> => {
-    // Save to localStorage first for immediate UI update
     saveToLocalStorage(FEEDS_KEY, feeds);
     
     try {
-      await apiRequest('feeds', {
+      await apiRequest('data/feeds', {
         method: 'POST',
         body: JSON.stringify(feeds),
       });
@@ -107,84 +174,189 @@ export const storage = {
     }
   },
 
-  addFeed: async (feed: Feed): Promise<void> => {
-    const feeds = await storage.getFeeds();
-    // Check if feed with same URL already exists
-    if (feeds.some(f => f.url === feed.url)) {
-      throw new Error('Feed with this URL already exists');
-    }
-    feeds.push(feed);
-    await storage.saveFeeds(feeds);
-  },
+  // ==========================================================================
+  // FEED ITEMS
+  // ==========================================================================
 
-  removeFeed: async (feedId: string): Promise<void> => {
-    const feeds = await storage.getFeeds();
-    const feedToRemove = feeds.find(f => f.id === feedId);
-    
-    if (!feedToRemove) {
-      return; // Feed not found
-    }
-
-    // Remove the feed
-    const filteredFeeds = feeds.filter(f => f.id !== feedId);
-    await storage.saveFeeds(filteredFeeds);
-
-    // Remove items from this feed that are in "inbox" or "archived" status
-    // Keep items with "saved" or "bookmarked" status
-    const allItems = await storage.getFeedItems();
-    
-    // Helper to normalize hostname for comparison
-    const normalizeHostname = (url: string): string | null => {
-      try {
-        const urlObj = new URL(url);
-        let hostname = urlObj.hostname.toLowerCase();
-        if (hostname.startsWith('www.')) {
-          hostname = hostname.substring(4);
-        }
-        return hostname;
-      } catch {
-        return null;
+  /**
+   * Get all feed items from the server
+   */
+  getFeedItems: async (options?: { status?: string; feedId?: string }): Promise<FeedItem[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (options?.status) params.append('status', options.status);
+      if (options?.feedId) params.append('feedId', options.feedId);
+      
+      const endpoint = params.toString() ? `items?${params}` : 'items';
+      const items = await apiRequest<FeedItem[]>(endpoint);
+      
+      // Only cache if getting all items
+      if (!options?.status && !options?.feedId) {
+        saveToLocalStorage(FEED_ITEMS_KEY, items);
       }
-    };
-
-    const feedHostname = normalizeHostname(feedToRemove.url);
-    
-    const filteredItems = allItems.filter((item) => {
-      // Check if item belongs to this feed by comparing hostnames
-      const itemHostname = normalizeHostname(item.url);
-      const belongsToFeed = feedHostname && itemHostname && feedHostname === itemHostname;
-
-      if (!belongsToFeed) {
-        return true; // Keep items from other feeds
+      
+      return items;
+    } catch (error: unknown) {
+      const err = error as { suppressWarning?: boolean; isUnauthorized?: boolean };
+      if (!err?.suppressWarning && !err?.isUnauthorized) {
+        console.warn('Failed to fetch feed items from API, using local storage:', error);
       }
-
-      // If item belongs to this feed, only keep if it's saved or bookmarked
-      return item.status === 'saved' || item.status === 'bookmarked';
-    });
-
-    await storage.saveFeedItems(filteredItems);
+      return fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+    }
   },
 
-  getFeed: async (feedId: string): Promise<Feed | null> => {
-    const feeds = await storage.getFeeds();
-    return feeds.find(f => f.id === feedId) || null;
+  /**
+   * Get a single feed item by ID
+   */
+  getFeedItem: async (id: string): Promise<FeedItem | null> => {
+    try {
+      const item = await apiRequest<FeedItem>(`items/${id}`);
+      return item;
+    } catch (error) {
+      // Fallback to local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      return items.find(item => item.id === id) || null;
+    }
   },
 
-  updateFeedName: async (feedId: string, newName: string): Promise<void> => {
-    const feeds = await storage.getFeeds();
-    const updated = feeds.map(f => 
-      f.id === feedId ? { ...f, name: newName.trim() } : f
-    );
-    await storage.saveFeeds(updated);
+  /**
+   * Upsert feed items for a specific feed
+   */
+  upsertFeedItems: async (feedId: string, items: Partial<FeedItem>[]): Promise<void> => {
+    try {
+      await apiRequest(`feeds/${feedId}/items`, {
+        method: 'POST',
+        body: JSON.stringify(items),
+      });
+      
+      // Refresh local cache
+      const allItems = await storage.getFeedItems();
+      saveToLocalStorage(FEED_ITEMS_KEY, allItems);
+    } catch (error) {
+      console.error('Failed to upsert feed items:', error);
+      throw error;
+    }
   },
 
+  /**
+   * Update a feed item's status
+   */
+  updateItemStatus: async (itemId: string, status: FeedItem['status']): Promise<FeedItem> => {
+    try {
+      const updated = await apiRequest<FeedItem>(`items/${itemId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      });
+      
+      // Update local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const updatedItems = items.map(item => 
+        item.id === itemId ? { ...item, status } : item
+      );
+      saveToLocalStorage(FEED_ITEMS_KEY, updatedItems);
+      
+      return updated;
+    } catch (error) {
+      console.error('Failed to update item status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update a feed item's AI summary
+   */
+  updateItemSummary: async (itemId: string, summary: string): Promise<FeedItem> => {
+    try {
+      const updated = await apiRequest<FeedItem>(`items/${itemId}/summary`, {
+        method: 'POST',
+        body: JSON.stringify({ summary }),
+      });
+      
+      // Update local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const updatedItems = items.map(item => 
+        item.id === itemId ? { ...item, aiSummary: summary } : item
+      );
+      saveToLocalStorage(FEED_ITEMS_KEY, updatedItems);
+      
+      return updated;
+    } catch (error) {
+      console.error('Failed to update item summary:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a single feed item
+   */
   removeFeedItem: async (itemId: string): Promise<void> => {
-    const items = await storage.getFeedItems();
-    const filtered = items.filter(item => item.id !== itemId);
-    await storage.saveFeedItems(filtered);
+    try {
+      await apiRequest(`items/${itemId}`, {
+        method: 'DELETE',
+      });
+      
+      // Update local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const filtered = items.filter(item => item.id !== itemId);
+      saveToLocalStorage(FEED_ITEMS_KEY, filtered);
+    } catch (error) {
+      console.error('Failed to remove feed item:', error);
+      throw error;
+    }
   },
 
+  /**
+   * Delete all feed items with a specific status
+   */
+  deleteItemsByStatus: async (status: string): Promise<number> => {
+    try {
+      const result = await apiRequest<{ count: number }>(`items?status=${status}`, {
+        method: 'DELETE',
+      });
+      
+      // Update local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const filtered = items.filter(item => item.status !== status);
+      saveToLocalStorage(FEED_ITEMS_KEY, filtered);
+      
+      return result.count;
+    } catch (error) {
+      console.error('Failed to delete items by status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Clear all feed items (reset)
+   */
   clearAllFeedItems: async (): Promise<void> => {
-    await storage.saveFeedItems([]);
+    // Clear each status type
+    try {
+      await storage.deleteItemsByStatus('inbox');
+      await storage.deleteItemsByStatus('saved');
+      await storage.deleteItemsByStatus('bookmarked');
+      await storage.deleteItemsByStatus('archived');
+      saveToLocalStorage(FEED_ITEMS_KEY, []);
+    } catch (error) {
+      console.error('Failed to clear all feed items:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Legacy: Save all feed items (for backward compatibility)
+   */
+  saveFeedItems: async (items: FeedItem[]): Promise<void> => {
+    saveToLocalStorage(FEED_ITEMS_KEY, items);
+    
+    try {
+      await apiRequest('data/feed-items', {
+        method: 'POST',
+        body: JSON.stringify(items),
+      });
+    } catch (error) {
+      console.error('Failed to save feed items to API:', error);
+      throw error;
+    }
   },
 };

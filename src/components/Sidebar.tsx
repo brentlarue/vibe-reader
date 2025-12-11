@@ -58,53 +58,48 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       const { normalizeFeedUrl, fetchRss } = await import('../utils/rss');
       const normalizedUrl = normalizeFeedUrl(feedUrl.trim());
 
-      // Create feed with a temporary name (will be updated after fetching)
-      newFeed = {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        name: 'Loading...',
-        url: normalizedUrl,
-        sourceType: 'rss',
-        rssTitle: undefined, // Will be set after fetching
-      };
-
-      await storage.addFeed(newFeed);
-      onFeedsChange();
-
-      // Fetch the feed to get its name and items
-      console.log('Adding new feed:', newFeed.url);
-
-      // fetchRss now returns { items, feedTitle } with deduplication, sorting, and limiting to 5
+      // Fetch the feed first to get its title and items
+      console.log('Fetching feed to validate:', normalizedUrl);
       const existingItems = await storage.getFeedItems();
       const { items: newItems, feedTitle: actualFeedTitle } = await fetchRss(normalizedUrl, existingItems);
 
-      // Update feed name and rssTitle with actual RSS feed title
-      if (newFeed) {
-        const updatedFeeds = await storage.getFeeds();
-        const feedIndex = updatedFeeds.findIndex(f => f.id === newFeed!.id);
-        if (feedIndex !== -1) {
-          updatedFeeds[feedIndex].name = actualFeedTitle;
-          updatedFeeds[feedIndex].rssTitle = actualFeedTitle; // Store original RSS title for matching
-          await storage.saveFeeds(updatedFeeds);
-          onFeedsChange();
+      // Create feed with the actual title from RSS
+      try {
+        newFeed = await storage.addFeed({
+          url: normalizedUrl,
+          displayName: actualFeedTitle,
+          rssTitle: actualFeedTitle,
+          sourceType: 'rss',
+        });
+        onFeedsChange();
+      } catch (addError) {
+        if (addError instanceof Error && addError.message.includes('already exists')) {
+          setError('This feed is already added');
+          return;
         }
+        throw addError;
+      }
 
-        if (newItems.length > 0) {
-          console.log(`Adding feed ${newFeed.url}: got ${newItems.length} new items after deduplication`);
-          const allItems = [...existingItems, ...newItems];
-          await storage.saveFeedItems(allItems);
-          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-        } else {
-          console.log(`Adding feed ${newFeed.url}: no new items`);
-          // If no items were returned, it could mean the feed failed to load
-          // Check if this was a new feed (no items exist with this source)
-          const hasItemsFromFeed = existingItems.some(item => item.source === actualFeedTitle);
-          if (!hasItemsFromFeed) {
-            setError('No items found. This might not be a valid RSS feed URL. Please check the URL and try again.');
-            // Remove the feed since it failed to load
-            await storage.removeFeed(newFeed.id);
-            onFeedsChange();
-            return;
-          }
+      // Save the new items
+      if (newFeed && newItems.length > 0) {
+        console.log(`Adding feed ${newFeed.url}: got ${newItems.length} new items`);
+        
+        // Use the new upsert API to save items with feedId
+        await storage.upsertFeedItems(newFeed.id, newItems.map(item => ({
+          ...item,
+          source: actualFeedTitle,
+        })));
+        
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      } else if (newItems.length === 0) {
+        console.log(`Adding feed ${normalizedUrl}: no items found`);
+        // Check if this is a valid feed with no new items, or an invalid feed
+        const hasItemsFromFeed = existingItems.some(item => item.source === actualFeedTitle);
+        if (!hasItemsFromFeed && newFeed) {
+          setError('No items found. This might not be a valid RSS feed URL.');
+          await storage.removeFeed(newFeed.id);
+          onFeedsChange();
+          return;
         }
       }
 
@@ -125,7 +120,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       } else if (err instanceof TypeError) {
         setError('Please enter a valid URL');
       } else if (err instanceof Error) {
-        // Use the error message from fetchRss which provides helpful context
         setError(err.message);
       } else {
         setError('Failed to add feed. Please check the URL and try again.');

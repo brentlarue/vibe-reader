@@ -1,0 +1,615 @@
+/**
+ * Feed Repository
+ * 
+ * Data access layer for feeds and feed items using Supabase.
+ * All functions return plain JS objects suitable for the frontend.
+ */
+
+import { supabase, isSupabaseConfigured } from './supabaseClient.js';
+
+// ============================================================================
+// FEEDS
+// ============================================================================
+
+/**
+ * Get all feeds
+ * @returns {Promise<Array>} List of feeds
+ */
+export async function getFeeds() {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feeds')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[DB] Error fetching feeds:', error);
+    throw error;
+  }
+
+  // Transform to match frontend Feed type
+  return (data || []).map(feed => ({
+    id: feed.id,
+    name: feed.display_name,
+    url: feed.url,
+    sourceType: feed.source_type,
+    rssTitle: feed.rss_title,
+  }));
+}
+
+/**
+ * Get a single feed by ID
+ * @param {string} feedId - Feed UUID
+ * @returns {Promise<Object|null>} Feed object or null
+ */
+export async function getFeed(feedId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feeds')
+    .select('*')
+    .eq('id', feedId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    console.error('[DB] Error fetching feed:', error);
+    throw error;
+  }
+
+  return data ? {
+    id: data.id,
+    name: data.display_name,
+    url: data.url,
+    sourceType: data.source_type,
+    rssTitle: data.rss_title,
+  } : null;
+}
+
+/**
+ * Get feed by URL
+ * @param {string} url - Feed URL
+ * @returns {Promise<Object|null>} Feed object or null
+ */
+export async function getFeedByUrl(url) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feeds')
+    .select('*')
+    .eq('url', url)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    console.error('[DB] Error fetching feed by URL:', error);
+    throw error;
+  }
+
+  return data ? {
+    id: data.id,
+    name: data.display_name,
+    url: data.url,
+    sourceType: data.source_type,
+    rssTitle: data.rss_title,
+  } : null;
+}
+
+/**
+ * Create a new feed
+ * @param {Object} feed - Feed data
+ * @param {string} feed.url - Feed URL
+ * @param {string} feed.displayName - Display name
+ * @param {string} [feed.rssTitle] - Original RSS title
+ * @param {string} [feed.sourceType='rss'] - Source type
+ * @returns {Promise<Object>} Created feed
+ */
+export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss' }) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feeds')
+    .insert({
+      url,
+      display_name: displayName,
+      rss_title: rssTitle || null,
+      source_type: sourceType,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error creating feed:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.display_name,
+    url: data.url,
+    sourceType: data.source_type,
+    rssTitle: data.rss_title,
+  };
+}
+
+/**
+ * Update a feed's display name
+ * @param {string} feedId - Feed UUID
+ * @param {string} displayName - New display name
+ * @returns {Promise<Object>} Updated feed
+ */
+export async function updateFeedName(feedId, displayName) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feeds')
+    .update({ display_name: displayName })
+    .eq('id', feedId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed name:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.display_name,
+    url: data.url,
+    sourceType: data.source_type,
+    rssTitle: data.rss_title,
+  };
+}
+
+/**
+ * Update a feed's RSS title (from feed metadata)
+ * @param {string} feedId - Feed UUID
+ * @param {string} rssTitle - RSS title from feed
+ * @returns {Promise<Object>} Updated feed
+ */
+export async function updateFeedRssTitle(feedId, rssTitle) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feeds')
+    .update({ rss_title: rssTitle })
+    .eq('id', feedId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed RSS title:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.display_name,
+    url: data.url,
+    sourceType: data.source_type,
+    rssTitle: data.rss_title,
+  };
+}
+
+/**
+ * Delete a feed and all its items
+ * @param {string} feedId - Feed UUID
+ * @returns {Promise<void>}
+ */
+export async function deleteFeed(feedId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  // Items are automatically deleted due to ON DELETE CASCADE
+  const { error } = await supabase
+    .from('feeds')
+    .delete()
+    .eq('id', feedId);
+
+  if (error) {
+    console.error('[DB] Error deleting feed:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// FEED ITEMS
+// ============================================================================
+
+/**
+ * Get all feed items
+ * @param {Object} [options] - Query options
+ * @param {string} [options.status] - Filter by status
+ * @param {string} [options.feedId] - Filter by feed ID
+ * @param {number} [options.limit] - Limit results
+ * @returns {Promise<Array>} List of feed items
+ */
+export async function getFeedItems({ status, feedId, limit } = {}) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  let query = supabase
+    .from('feed_items')
+    .select('*')
+    .order('published_at', { ascending: false, nullsFirst: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  if (feedId) {
+    query = query.eq('feed_id', feedId);
+  }
+
+  if (limit) {
+    query = query.limit(limit);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('[DB] Error fetching feed items:', error);
+    throw error;
+  }
+
+  // Transform to match frontend FeedItem type
+  return (data || []).map(transformFeedItem);
+}
+
+/**
+ * Get a single feed item by ID
+ * @param {string} itemId - Item UUID
+ * @returns {Promise<Object|null>} Feed item or null
+ */
+export async function getFeedItem(itemId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .select('*')
+    .eq('id', itemId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    console.error('[DB] Error fetching feed item:', error);
+    throw error;
+  }
+
+  return data ? transformFeedItem(data) : null;
+}
+
+/**
+ * Upsert feed items (insert or update on conflict)
+ * @param {string} feedId - Feed UUID
+ * @param {Array} items - Array of feed items
+ * @returns {Promise<Array>} Upserted items
+ */
+export async function upsertFeedItems(feedId, items) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  if (!items || items.length === 0) {
+    return [];
+  }
+
+  // Transform items for database
+  const dbItems = items.map(item => ({
+    feed_id: feedId,
+    external_id: item.id || item.externalId || null,
+    title: item.title,
+    url: item.url,
+    published_at: item.publishedAt || null,
+    content_snippet: item.contentSnippet || null,
+    full_content: item.fullContent || null,
+    ai_summary: item.aiSummary || null,
+    status: item.status || 'inbox',
+    paywall_status: item.paywallStatus || 'unknown',
+    source: item.source || null,
+    source_type: item.sourceType || 'rss',
+  }));
+
+  // Use upsert with ON CONFLICT on (feed_id, url)
+  const { data, error } = await supabase
+    .from('feed_items')
+    .upsert(dbItems, {
+      onConflict: 'feed_id,url',
+      ignoreDuplicates: false,
+    })
+    .select();
+
+  if (error) {
+    console.error('[DB] Error upserting feed items:', error);
+    throw error;
+  }
+
+  return (data || []).map(transformFeedItem);
+}
+
+/**
+ * Update a feed item's status
+ * @param {string} itemId - Item UUID
+ * @param {string} status - New status ('inbox' | 'saved' | 'bookmarked' | 'archived')
+ * @returns {Promise<Object>} Updated item
+ */
+export async function updateFeedItemStatus(itemId, status) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const validStatuses = ['inbox', 'saved', 'bookmarked', 'archived'];
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Invalid status: ${status}`);
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update({ status })
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed item status:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
+ * Update a feed item's AI summary
+ * @param {string} itemId - Item UUID
+ * @param {string} summary - AI summary text
+ * @returns {Promise<Object>} Updated item
+ */
+export async function updateFeedItemSummary(itemId, summary) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update({ ai_summary: summary })
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed item summary:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
+ * Update a feed item's paywall status
+ * @param {string} itemId - Item UUID
+ * @param {string} paywallStatus - Paywall status ('unknown' | 'free' | 'paid')
+ * @returns {Promise<Object>} Updated item
+ */
+export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const validStatuses = ['unknown', 'free', 'paid'];
+  if (!validStatuses.includes(paywallStatus)) {
+    throw new Error(`Invalid paywall status: ${paywallStatus}`);
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update({ paywall_status: paywallStatus })
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed item paywall status:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
+ * Delete a feed item
+ * @param {string} itemId - Item UUID
+ * @returns {Promise<void>}
+ */
+export async function deleteFeedItem(itemId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { error } = await supabase
+    .from('feed_items')
+    .delete()
+    .eq('id', itemId);
+
+  if (error) {
+    console.error('[DB] Error deleting feed item:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete all feed items with a specific status
+ * @param {string} status - Status to delete
+ * @returns {Promise<number>} Number of deleted items
+ */
+export async function deleteFeedItemsByStatus(status) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .delete()
+    .eq('status', status)
+    .select();
+
+  if (error) {
+    console.error('[DB] Error deleting feed items by status:', error);
+    throw error;
+  }
+
+  return data?.length || 0;
+}
+
+// ============================================================================
+// PREFERENCES
+// ============================================================================
+
+/**
+ * Get all preferences
+ * @returns {Promise<Object>} Preferences object
+ */
+export async function getPreferences() {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('preferences')
+    .select('key, value');
+
+  if (error) {
+    console.error('[DB] Error fetching preferences:', error);
+    throw error;
+  }
+
+  // Transform array of key-value pairs to object
+  const prefs = {};
+  for (const row of (data || [])) {
+    prefs[row.key] = row.value;
+  }
+
+  return prefs;
+}
+
+/**
+ * Set a preference
+ * @param {string} key - Preference key
+ * @param {*} value - Preference value (will be stored as JSONB)
+ * @returns {Promise<void>}
+ */
+export async function setPreference(key, value) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { error } = await supabase
+    .from('preferences')
+    .upsert({ key, value }, { onConflict: 'key' });
+
+  if (error) {
+    console.error('[DB] Error setting preference:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update multiple preferences
+ * @param {Object} updates - Object of key-value pairs to update
+ * @returns {Promise<void>}
+ */
+export async function updatePreferences(updates) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const upserts = Object.entries(updates).map(([key, value]) => ({
+    key,
+    value,
+  }));
+
+  const { error } = await supabase
+    .from('preferences')
+    .upsert(upserts, { onConflict: 'key' });
+
+  if (error) {
+    console.error('[DB] Error updating preferences:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Transform database feed item to frontend format
+ * @param {Object} dbItem - Database row
+ * @returns {Object} Frontend-compatible feed item
+ */
+function transformFeedItem(dbItem) {
+  return {
+    id: dbItem.id,
+    feedId: dbItem.feed_id,
+    externalId: dbItem.external_id,
+    source: dbItem.source,
+    sourceType: dbItem.source_type,
+    title: dbItem.title,
+    url: dbItem.url,
+    publishedAt: dbItem.published_at,
+    contentSnippet: dbItem.content_snippet,
+    fullContent: dbItem.full_content,
+    aiSummary: dbItem.ai_summary,
+    status: dbItem.status,
+    paywallStatus: dbItem.paywall_status,
+  };
+}
+
+/**
+ * Check if a feed item already exists by URL
+ * @param {string} feedId - Feed UUID
+ * @param {string} url - Item URL
+ * @returns {Promise<boolean>}
+ */
+export async function feedItemExistsByUrl(feedId, url) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { count, error } = await supabase
+    .from('feed_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('feed_id', feedId)
+    .eq('url', url);
+
+  if (error) {
+    console.error('[DB] Error checking feed item existence:', error);
+    throw error;
+  }
+
+  return count > 0;
+}
+
