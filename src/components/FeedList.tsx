@@ -1,5 +1,6 @@
 import { FeedItem, Feed } from '../types';
 import FeedItemCard from './FeedItemCard';
+import PullToRefresh from './PullToRefresh';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
 import { useLocation } from 'react-router-dom';
@@ -8,11 +9,12 @@ interface FeedListProps {
   status: FeedItem['status'];
   selectedFeedId: string | null;
   feeds: Feed[];
+  onRefresh?: () => Promise<void>;
 }
 
 type SortOrder = 'newest' | 'oldest';
 
-export default function FeedList({ status, selectedFeedId, feeds }: FeedListProps) {
+export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: FeedListProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const location = useLocation();
@@ -199,24 +201,36 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
     }
   };
 
+  // Handle refresh with item reload
+  const handleRefresh = useCallback(async () => {
+    if (onRefresh) {
+      await onRefresh();
+      // Reload items after refresh
+      await loadItems();
+    }
+  }, [onRefresh, loadItems]);
+
   if (items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
     return (
-      <div className="flex items-center justify-center h-full" style={{ color: 'var(--theme-text-muted)' }}>
-        <div className="text-center">
-          <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No items found</p>
-          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-            {selectedFeed 
-              ? `No items from "${selectedFeed.name}" with status "${getStatusLabel(status)}"`
-              : `Items with status "${getStatusLabel(status)}" will appear here`}
-          </p>
+      <PullToRefresh onRefresh={handleRefresh}>
+        <div className="flex items-center justify-center h-64" style={{ color: 'var(--theme-text-muted)' }}>
+          <div className="text-center">
+            <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No items found</p>
+            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+              {selectedFeed 
+                ? `No items from "${selectedFeed.name}" with status "${getStatusLabel(status)}"`
+                : `Items with status "${getStatusLabel(status)}" will appear here`}
+            </p>
+          </div>
         </div>
-      </div>
+      </PullToRefresh>
     );
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className="w-full max-w-3xl mx-auto">
       <div className="flex flex-row items-center justify-end gap-4 mb-6" style={{ marginTop: '0', paddingTop: '0' }}>
         {status === 'archived' && items.length > 0 && (
           <button
@@ -300,6 +314,7 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
           itemIndex={index}
         />
       ))}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }

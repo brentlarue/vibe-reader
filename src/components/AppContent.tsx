@@ -139,10 +139,10 @@ function AppContent({
       <main className="flex-1 overflow-y-auto overflow-x-hidden px-6 sm:px-6 md:px-8 lg:px-12 pt-6 pb-6 sm:py-8 lg:py-12 w-0 min-w-0">
         <Routes>
           <Route path="/" element={<Navigate to="/inbox" replace />} />
-          <Route path="/inbox" element={<FeedList status="inbox" selectedFeedId={selectedFeedId} feeds={feeds} />} />
-          <Route path="/saved" element={<FeedList status="saved" selectedFeedId={selectedFeedId} feeds={feeds} />} />
-          <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} />} />
-          <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} />} />
+          <Route path="/inbox" element={<FeedList status="inbox" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
+          <Route path="/saved" element={<FeedList status="saved" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
+          <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
+          <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/article/:id" element={<ArticleReader />} />
         </Routes>
       </main>
