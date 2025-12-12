@@ -283,6 +283,13 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     return counts;
   }, [feeds, inboxItems]);
 
+  // Sort feeds alphabetically by name (A-Z)
+  const sortedFeeds = useMemo(() => {
+    return [...feeds].sort((a, b) => 
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+    );
+  }, [feeds]);
+
   // Note: isCollapsed is handled in AppContent - sidebar is hidden via CSS on desktop
   // On mobile, drawer state is controlled by isMobileDrawerOpen
 
@@ -511,7 +518,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
           </form>
 
           <div className="space-y-1">
-            {feeds.length === 0 ? (
+            {sortedFeeds.length === 0 ? (
               <p 
                 className="px-3 py-2 text-xs"
                 style={{ color: 'var(--theme-text-muted)' }}
@@ -519,7 +526,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                 No feeds added yet
               </p>
             ) : (
-              feeds.map((feed) => (
+              sortedFeeds.map((feed) => (
                 <div
                   key={feed.id}
                   className="group w-full px-3 py-2 text-sm rounded transition-colors"
