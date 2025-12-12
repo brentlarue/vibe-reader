@@ -215,7 +215,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     return (
       <PullToRefresh onRefresh={handleRefresh}>
         <div className="flex items-center justify-center h-64" style={{ color: 'var(--theme-text-muted)' }}>
-          <div className="text-center">
+        <div className="text-center">
             <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No items found</p>
             <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
               {selectedFeed 
@@ -314,7 +314,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
           itemIndex={index}
         />
       ))}
-      </div>
+    </div>
     </PullToRefresh>
   );
 }

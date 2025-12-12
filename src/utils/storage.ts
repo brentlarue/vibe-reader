@@ -217,7 +217,7 @@ export const storage = {
     } catch (error) {
       // Fallback to local cache
       const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
-      return items.find(item => item.id === id) || null;
+    return items.find(item => item.id === id) || null;
     }
   },
 

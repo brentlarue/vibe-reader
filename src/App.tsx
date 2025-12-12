@@ -86,7 +86,7 @@ function App() {
     if (isAuthenticated) {
       const loadFeeds = async () => {
         const loadedFeeds = await storage.getFeeds();
-        setFeeds(loadedFeeds);
+    setFeeds(loadedFeeds);
       };
       loadFeeds();
     }
@@ -211,7 +211,7 @@ function App() {
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Routes>
+          <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/*"
@@ -233,7 +233,7 @@ function App() {
             )
           }
         />
-      </Routes>
+          </Routes>
     </BrowserRouter>
   );
 }
