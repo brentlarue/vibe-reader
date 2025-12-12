@@ -146,7 +146,7 @@ export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss
 }
 
 /**
- * Update a feed's display name
+ * Update a feed's display name and update all related items' source field
  * @param {string} feedId - Feed UUID
  * @param {string} displayName - New display name
  * @returns {Promise<Object>} Updated feed
@@ -156,6 +156,19 @@ export async function updateFeedName(feedId, displayName) {
     throw new Error('Supabase not configured');
   }
 
+  // First, get the current feed to know its rssTitle for matching items
+  const { data: currentFeed, error: fetchError } = await supabase
+    .from('feeds')
+    .select('rss_title')
+    .eq('id', feedId)
+    .single();
+
+  if (fetchError) {
+    console.error('[DB] Error fetching feed for rename:', fetchError);
+    throw fetchError;
+  }
+
+  // Update the feed's display name
   const { data, error } = await supabase
     .from('feeds')
     .update({ display_name: displayName })
@@ -166,6 +179,17 @@ export async function updateFeedName(feedId, displayName) {
   if (error) {
     console.error('[DB] Error updating feed name:', error);
     throw error;
+  }
+
+  // Update all items that belong to this feed to use the new display name as source
+  const { error: itemsError } = await supabase
+    .from('feed_items')
+    .update({ source: displayName })
+    .eq('feed_id', feedId);
+
+  if (itemsError) {
+    console.error('[DB] Error updating feed items source:', itemsError);
+    // Don't throw - feed was updated successfully, items update is secondary
   }
 
   return {

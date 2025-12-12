@@ -697,6 +697,7 @@ app.put('/api/feeds/:feedId', requireAuth, async (req, res) => {
     if (isSupabaseConfigured()) {
       let feed;
       if (displayName !== undefined) {
+        // This also updates all items' source field in Supabase
         feed = await feedRepo.updateFeedName(feedId, displayName);
       }
       if (rssTitle !== undefined) {
@@ -712,8 +713,20 @@ app.put('/api/feeds/:feedId', requireAuth, async (req, res) => {
     if (index === -1) {
       return res.status(404).json({ error: 'Feed not found' });
     }
+    
     if (displayName !== undefined) {
       feeds[index].name = displayName;
+      
+      // Also update all items that belong to this feed
+      // Match by feedId (most reliable, works across multiple renames)
+      const items = await readJsonFile(FEED_ITEMS_FILE);
+      const updatedItems = items.map(item => {
+        if (item.feedId === feedId) {
+          return { ...item, source: displayName };
+        }
+        return item;
+      });
+      await writeJsonFile(FEED_ITEMS_FILE, updatedItems);
     }
     if (rssTitle !== undefined) {
       feeds[index].rssTitle = rssTitle;

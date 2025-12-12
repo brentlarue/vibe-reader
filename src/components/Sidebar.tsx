@@ -157,6 +157,8 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     if (editFeedName.trim()) {
       await storage.updateFeedName(feedId, editFeedName.trim());
       onFeedsChange();
+      // Trigger refresh of item lists to show updated source name
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
     }
     handleCancelRename();
   };
