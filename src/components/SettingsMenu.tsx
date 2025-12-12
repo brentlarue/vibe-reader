@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { Theme } from '../types';
@@ -13,6 +13,20 @@ const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'le
 export default function SettingsMenu() {
   const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ bottom: 0, left: 0, width: 0 });
+
+  // Calculate menu position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        bottom: window.innerHeight - rect.top + 8, // 8px gap above button
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, [isOpen]);
 
   const handleLogout = async () => {
     try {
@@ -32,6 +46,7 @@ export default function SettingsMenu() {
     <div className="relative">
       {/* Settings Button */}
       <button
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         className="w-full text-left px-3 py-2 text-sm transition-colors"
         style={{
@@ -63,13 +78,16 @@ export default function SettingsMenu() {
         document.body
       )}
 
-      {/* Settings Menu Card */}
-      {isOpen && (
+      {/* Settings Menu Card - also rendered via portal to be above overlay */}
+      {isOpen && createPortal(
         <div
-          className="absolute bottom-full left-0 mb-2 w-full shadow-xl p-4 space-y-4 z-[101]"
+          className="fixed shadow-xl p-4 space-y-4 z-[101]"
           style={{
             backgroundColor: 'var(--theme-card-bg)',
             border: '1px solid var(--theme-border)',
+            bottom: menuPosition.bottom,
+            left: menuPosition.left,
+            width: menuPosition.width,
           }}
         >
           {/* Theme Section */}
@@ -137,7 +155,8 @@ export default function SettingsMenu() {
           >
             <span>Log out</span>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
