@@ -100,18 +100,18 @@ body {
     --theme-button-text: #ffffff;
   }
 
-  /* Mint theme */
-  .theme-mint {
-    --theme-bg: #f0fdf4;
-    --theme-text: #14532d;
-    --theme-text-secondary: #166534;
-    --theme-text-muted: #15803d;
-    --theme-placeholder: #86efac;
-    --theme-border: #bbf7d0;
-    --theme-accent: #14532d;
-    --theme-hover-bg: #dcfce7;
-    --theme-card-bg: #f0fdf4;
-    --theme-button-bg: #14532d;
+  /* Hacker News theme */
+  .theme-hn {
+    --theme-bg: #f6f6ef;
+    --theme-text: #000000;
+    --theme-text-secondary: #333333;
+    --theme-text-muted: #828282;
+    --theme-placeholder: #999999;
+    --theme-border: #e0e0e0;
+    --theme-accent: #ff6600;
+    --theme-hover-bg: #eeeeea;
+    --theme-card-bg: #f6f6ef;
+    --theme-button-bg: #ff6600;
     --theme-button-text: #ffffff;
   }
 

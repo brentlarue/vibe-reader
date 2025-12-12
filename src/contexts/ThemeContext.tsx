@@ -90,7 +90,7 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement;
   
   // Remove all theme classes
-  root.classList.remove('theme-light', 'theme-dark', 'theme-sepia', 'theme-mint');
+  root.classList.remove('theme-light', 'theme-dark', 'theme-sepia', 'theme-hn');
   
   // Add current theme class
   root.classList.add(`theme-${theme}`);
@@ -100,7 +100,7 @@ function applyTheme(theme: Theme) {
     light: '#ffffff',
     dark: '#1a1a1a',
     sepia: '#f4ecd8',
-    mint: '#f0fdf4',
+    hn: '#f6f6ef',
   };
   
   const metaThemeColor = document.getElementById('theme-color-meta') as HTMLMetaElement | null;

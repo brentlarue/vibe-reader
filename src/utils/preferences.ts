@@ -4,7 +4,7 @@
 import { apiFetch } from './apiFetch';
 
 export interface Preferences {
-  theme?: 'light' | 'dark' | 'sepia' | 'mint';
+  theme?: 'light' | 'dark' | 'sepia' | 'hn';
   sidebarCollapsed?: boolean;
 }
 
@@ -99,7 +99,7 @@ export const preferences = {
   /**
    * Get current theme
    */
-  getTheme: async (): Promise<'light' | 'dark' | 'sepia' | 'mint'> => {
+  getTheme: async (): Promise<'light' | 'dark' | 'sepia' | 'hn'> => {
     const prefs = await preferences.get();
     return prefs.theme || 'light';
   },
@@ -107,7 +107,7 @@ export const preferences = {
   /**
    * Set theme
    */
-  setTheme: async (theme: 'light' | 'dark' | 'sepia' | 'mint'): Promise<void> => {
+  setTheme: async (theme: 'light' | 'dark' | 'sepia' | 'hn'): Promise<void> => {
     await preferences.set({ theme });
   },
 

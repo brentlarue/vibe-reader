@@ -2,7 +2,7 @@ export type SourceType = 'rss' | 'x';
 
 export type FeedItemStatus = 'inbox' | 'saved' | 'bookmarked' | 'archived';
 
-export type Theme = 'light' | 'dark' | 'sepia' | 'mint';
+export type Theme = 'light' | 'dark' | 'sepia' | 'hn';
 
 export interface FeedItem {
   id: string;

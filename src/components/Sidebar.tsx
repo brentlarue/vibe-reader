@@ -496,7 +496,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                   theme === 'light' ? 'placeholder:text-gray-400' :
                   theme === 'dark' ? 'placeholder:text-gray-400' :
                   theme === 'sepia' ? 'placeholder:[color:#8B7355]' :
-                  theme === 'mint' ? 'placeholder:[color:#6B8F7A]' :
+                  theme === 'hn' ? 'placeholder:[color:#999999]' :
                   'placeholder:text-gray-400'
                 }`}
                 style={{
@@ -582,7 +582,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                           theme === 'light' ? 'placeholder:text-gray-400' :
                           theme === 'dark' ? 'placeholder:text-gray-400' :
                           theme === 'sepia' ? 'placeholder:[color:#8B7355]' :
-                          theme === 'mint' ? 'placeholder:[color:#6B8F7A]' :
+                          theme === 'hn' ? 'placeholder:[color:#999999]' :
                           'placeholder:text-gray-400'
                         }`}
                         style={{
