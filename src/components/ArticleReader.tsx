@@ -51,8 +51,8 @@ export default function ArticleReader() {
   // Navigate to next item in the list
   const navigateToNext = useCallback(() => {
     if (!navContext || !item) {
-      // No context, just go back
-      navigate(-1);
+      // No context, go to inbox
+      navigate('/inbox');
       return;
     }
 
@@ -470,10 +470,19 @@ export default function ArticleReader() {
   // Check if we actually had content from the feed (not just empty)
   const hadContentFromFeed = !!(item.fullContent || item.contentSnippet);
 
+  // Navigate back to the list view (not browser history)
+  const handleBack = () => {
+    if (navContext?.returnPath) {
+      navigate(navContext.returnPath);
+    } else {
+      navigate('/inbox');
+    }
+  };
+
   return (
     <div className="w-full max-w-3xl mx-auto lg:px-0">
       <button
-        onClick={() => navigate(-1)}
+        onClick={handleBack}
         className="mb-6 sm:mb-8 mt-14 lg:mt-0 text-sm font-medium transition-colors touch-manipulation py-2 px-2 lg:-ml-2"
         style={{ color: 'var(--theme-text-muted)' }}
         onMouseEnter={(e) => {
@@ -805,6 +814,37 @@ export default function ArticleReader() {
           />
         </div>
       </article>
+
+      {/* Floating next button - bottom right with safe area for iOS */}
+      {/* z-30 so it appears under sidebar overlay (z-40) when open */}
+      {navContext && navContext.itemIds.length > 1 && (
+        <button
+          onClick={navigateToNext}
+          className="fixed bottom-8 right-6 sm:bottom-10 sm:right-8 z-30 p-2 rounded transition-colors touch-manipulation"
+          style={{
+            color: 'var(--theme-text-muted)',
+            backgroundColor: 'var(--theme-card-bg)',
+            border: '1px solid var(--theme-border)',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+            // Extra bottom padding for iOS safe area
+            marginBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-secondary)';
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-muted)';
+            e.currentTarget.style.backgroundColor = 'var(--theme-card-bg)';
+          }}
+          aria-label="Next article"
+          title="Next article"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

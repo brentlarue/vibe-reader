@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { Theme } from '../types';
 
@@ -53,18 +54,19 @@ export default function SettingsMenu() {
         <span>Settings</span>
       </button>
 
-      {/* Click outside overlay - rendered first so it's behind the menu */}
-      {isOpen && (
+      {/* Click outside overlay - rendered via portal to escape sidebar stacking context */}
+      {isOpen && createPortal(
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-[100]"
           onClick={() => setIsOpen(false)}
-        />
+        />,
+        document.body
       )}
 
       {/* Settings Menu Card */}
       {isOpen && (
         <div
-          className="absolute bottom-full left-0 mb-2 w-full shadow-xl p-4 space-y-4 z-50"
+          className="absolute bottom-full left-0 mb-2 w-full shadow-xl p-4 space-y-4 z-[101]"
           style={{
             backgroundColor: 'var(--theme-card-bg)',
             border: '1px solid var(--theme-border)',
