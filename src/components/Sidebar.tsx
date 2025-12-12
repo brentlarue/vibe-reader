@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
 import SettingsMenu from './SettingsMenu';
@@ -26,28 +26,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
   const [editFeedName, setEditFeedName] = useState('');
   
-  // Track if nav content is scrolled (for showing border above settings)
-  const navRef = useRef<HTMLElement>(null);
-  const [isNavScrolled, setIsNavScrolled] = useState(false);
-  
-  // Check if nav content is scrolled to show border above settings
-  const handleNavScroll = useCallback(() => {
-    if (navRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = navRef.current;
-      // Show border if there's content scrolled below (not at bottom)
-      setIsNavScrolled(scrollTop + clientHeight < scrollHeight - 10);
-    }
-  }, []);
-  
-  useEffect(() => {
-    const nav = navRef.current;
-    if (nav) {
-      nav.addEventListener('scroll', handleNavScroll);
-      // Check initial state
-      handleNavScroll();
-      return () => nav.removeEventListener('scroll', handleNavScroll);
-    }
-  }, [handleNavScroll]);
 
   const handleNavClick = () => {
     if (onCloseMobileDrawer) {
@@ -418,7 +396,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         </button>
       </div>
 
-      <nav ref={navRef} className="flex-1 p-4 sm:p-6 space-y-1 overflow-y-auto overscroll-contain">
+      <nav className="flex-1 p-4 sm:p-6 space-y-1 overflow-y-auto overscroll-contain">
         <div className="mb-6 sm:mb-8">
           {navItems.map((item) => (
             <Link
@@ -717,10 +695,10 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       </nav>
       
       <div 
-        className="mt-auto pb-6 transition-all duration-150"
+        className="mt-auto pb-6"
         style={{ 
           paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
-          borderTop: isNavScrolled ? '1px solid var(--theme-border)' : '1px solid transparent',
+          borderTop: '1px solid var(--theme-border)',
         }}
       >
         <div className="px-4 sm:px-6 pt-4">
