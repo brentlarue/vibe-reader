@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { Theme } from '../types';
 import { storage } from '../utils/storage';
+import { itemBelongsToFeed } from '../utils/feedMatching';
 
 const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'yc' }[] = [
   { value: 'light', label: 'Light', icon: 'sun' },
@@ -43,6 +44,7 @@ export default function SettingsMenu() {
     }
   };
 
+
   const handleCullTheHerd = async () => {
     if (!confirm('This will delete all inbox items except the 5 most recent from each feed. Items in Later, Bookmarks, and Archive will not be affected. Continue?')) {
       return;
@@ -57,15 +59,10 @@ export default function SettingsMenu() {
 
       // For each feed, cull inbox items to keep only top 5
       for (const feed of feeds) {
-        // Get inbox items for this feed (match by feedId if available, otherwise by source/rssTitle)
+        // Get inbox items for this feed using robust matching
         const feedInboxItems = allItems.filter(item => {
           if (item.status !== 'inbox') return false;
-          // Prefer feedId matching (more reliable)
-          if (item.feedId && feed.id) {
-            return item.feedId === feed.id;
-          }
-          // Fallback to source matching
-          return item.source === feed.rssTitle || item.source === feed.name;
+          return itemBelongsToFeed(item, feed);
         });
 
         if (feedInboxItems.length <= 5) {

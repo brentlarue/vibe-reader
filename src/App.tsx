@@ -183,6 +183,72 @@ function App() {
             console.error('Error updating feed rssTitle:', updateError);
           }
         }
+
+        // Reassociate orphaned items: Find items that should belong to this feed but don't match
+        // This fixes items that were created before rssTitle was set correctly or feed URL changed
+        try {
+          const allItemsAfterRefresh = await storage.getFeedItems();
+          const orphanedItems = allItemsAfterRefresh.filter(item => {
+            // Skip items that already belong to this feed
+            if (item.feedId === feed.id) return false;
+            if (item.source === feedTitle || item.source === feed.rssTitle) return false;
+            
+            // Check if item should belong to this feed by URL pattern
+            const feedHostname = feed.url.toLowerCase();
+            const itemUrl = item.url?.toLowerCase() || '';
+            
+            // For proxy feeds like brianvia.blog/paul-graham, items come from paulgraham.com
+            if (feedHostname.includes('brianvia.blog') && feedHostname.includes('paul-graham')) {
+              if (itemUrl.includes('paulgraham.com')) {
+                return true;
+              }
+            }
+            
+            // For other feeds, check if item URL matches feed patterns
+            // This is a fallback - if new items were fetched and match, old items from same domain likely do too
+            if (feedItems.length > 0) {
+              const newItemUrls = feedItems.map(i => {
+                try {
+                  return new URL(i.url).hostname.toLowerCase();
+                } catch {
+                  return '';
+                }
+              });
+              try {
+                const itemHostname = new URL(item.url).hostname.toLowerCase();
+                if (newItemUrls.includes(itemHostname) && 
+                    item.source && 
+                    (item.source.includes('Paul Graham') || item.source.includes('paul graham'))) {
+                  return true;
+                }
+              } catch {
+                // Continue
+              }
+            }
+            
+            return false;
+          });
+
+          // Update orphaned items to belong to this feed
+          if (orphanedItems.length > 0) {
+            console.log(`Reassociating ${orphanedItems.length} orphaned items for feed ${feed.name}`);
+            
+            for (const item of orphanedItems) {
+              try {
+                // Update item's source and feed_id
+                await storage.reassociateItem(item.id, feed.id, feedTitle);
+              } catch (error) {
+                console.error(`Error reassociating item ${item.id}:`, error);
+              }
+            }
+            
+            // Refresh items after reassociation
+            window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          }
+        } catch (reassocError) {
+          console.error('Error during item reassociation:', reassocError);
+          // Don't fail the refresh if reassociation fails
+        }
       } catch (error) {
         console.error(`Error fetching feed ${feed.url}:`, error);
       }

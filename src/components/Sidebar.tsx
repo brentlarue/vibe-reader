@@ -4,6 +4,7 @@ import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
 import SettingsMenu from './SettingsMenu';
 import { useTheme } from '../contexts/ThemeContext';
+import { itemBelongsToFeed } from '../utils/feedMatching';
 
 interface SidebarProps {
   feeds: Feed[];
@@ -185,20 +186,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     }
   };
 
-  // Helper to normalize hostname for comparison
-  const normalizeHostname = (url: string): string | null => {
-    try {
-      const urlObj = new URL(url);
-      let hostname = urlObj.hostname.toLowerCase();
-      if (hostname.startsWith('www.')) {
-        hostname = hostname.substring(4);
-      }
-      return hostname;
-    } catch {
-      return null;
-    }
-  };
-
   // State to store inbox items for counting
   const [inboxItems, setInboxItems] = useState<FeedItem[]>([]);
 
@@ -236,45 +223,10 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     const counts: Record<string, number> = {};
 
     feeds.forEach((feed) => {
-      const feedHostname = normalizeHostname(feed.url);
       let count = 0;
 
       inboxItems.forEach((item: FeedItem) => {
-        // Match by source field (item.source) to rssTitle - most reliable
-        if (feed.rssTitle && item.source === feed.rssTitle) {
-          count++;
-          return;
-        }
-
-        // Fallback: If rssTitle is not set, try matching by name
-        if (!feed.rssTitle && item.source === feed.name) {
-          count++;
-          return;
-        }
-
-        // For Medium feeds, check URL path matching
-        if (feedHostname === 'medium.com') {
-          try {
-            const feedUrl = new URL(feed.url);
-            const feedPath = feedUrl.pathname.toLowerCase();
-            if (feedPath.includes('/feed/')) {
-              const authorPart = feedPath.split('/feed/')[1];
-              if (authorPart) {
-                const itemUrl = new URL(item.url);
-                if (itemUrl.pathname.toLowerCase().includes(authorPart)) {
-                  count++;
-                  return;
-                }
-              }
-            }
-          } catch {
-            // Continue to next check
-          }
-        }
-
-        // Fallback to hostname matching for other feeds
-        const itemHostname = normalizeHostname(item.url);
-        if (feedHostname && itemHostname && feedHostname === itemHostname) {
+        if (itemBelongsToFeed(item, feed)) {
           count++;
         }
       });
@@ -283,7 +235,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     });
 
     return counts;
-  }, [feeds, inboxItems]);
+  }, [feeds, inboxItems, itemBelongsToFeed]);
 
   // Sort feeds alphabetically by name (A-Z)
   const sortedFeeds = useMemo(() => {

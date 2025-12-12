@@ -324,6 +324,31 @@ export const storage = {
   },
 
   /**
+   * Reassociate an item with a different feed (updates feedId and source)
+   */
+  reassociateItem: async (itemId: string, feedId: string, source: string): Promise<FeedItem> => {
+    try {
+      const encodedId = encodeURIComponent(itemId);
+      const updated = await apiRequest<FeedItem>(`items/${encodedId}/reassociate`, {
+        method: 'POST',
+        body: JSON.stringify({ feedId, source }),
+      });
+      
+      // Update local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const updatedItems = items.map(item => 
+        item.id === itemId ? { ...item, feedId, source } : item
+      );
+      saveToLocalStorage(FEED_ITEMS_KEY, updatedItems);
+      
+      return updated;
+    } catch (error) {
+      console.error('Failed to reassociate item:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Delete a single feed item
    */
   removeFeedItem: async (itemId: string): Promise<void> => {

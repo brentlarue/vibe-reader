@@ -569,6 +569,43 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
 }
 
 /**
+ * Reassociate a feed item with a different feed (updates feed_id and source)
+ * @param {string} itemId - Item UUID or external_id or URL
+ * @param {string} feedId - New feed UUID
+ * @param {string} source - New source value (rssTitle)
+ * @returns {Promise<Object>} Updated item
+ */
+export async function reassociateFeedItem(itemId, feedId, source) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  // First, find the item to get its UUID
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  // Update the item's feed_id and source
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update({ 
+      feed_id: feedId,
+      source: source
+    })
+    .eq('id', item.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error reassociating feed item:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
  * Delete a feed item (supports UUID or external_id/URL lookup)
  * @param {string} itemId - Item UUID or external_id or URL
  * @returns {Promise<void>}

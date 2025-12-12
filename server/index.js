@@ -1042,6 +1042,38 @@ app.post('/api/items/:itemId/paywall', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/items/:itemId/reassociate - Reassociate an item with a feed
+app.post('/api/items/:itemId/reassociate', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { feedId, source } = req.body;
+
+    if (!feedId || !source) {
+      return res.status(400).json({ error: 'feedId and source are required' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.reassociateFeedItem(itemId, feedId, source);
+      return res.json(item);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    items[index].feedId = feedId;
+    items[index].source = source;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('Error reassociating item:', error);
+    res.status(500).json({ error: 'Failed to reassociate item' });
+  }
+});
+
 // DELETE /api/items/:itemId - Delete a single item
 app.delete('/api/items/:itemId', requireAuth, async (req, res) => {
   try {

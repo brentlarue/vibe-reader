@@ -4,6 +4,7 @@ import PullToRefresh from './PullToRefresh';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
 import { useLocation } from 'react-router-dom';
+import { itemBelongsToFeed } from '../utils/feedMatching';
 
 interface FeedListProps {
   status: FeedItem['status'];
@@ -21,20 +22,6 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   const scrollKey = `scrollPosition_${status}_${selectedFeedId || 'all'}`;
   const hasRestoredScroll = useRef(false);
 
-  // Helper to normalize hostname for comparison
-  const normalizeHostname = (url: string): string | null => {
-    try {
-      const urlObj = new URL(url);
-      let hostname = urlObj.hostname.toLowerCase();
-      if (hostname.startsWith('www.')) {
-        hostname = hostname.substring(4);
-      }
-      return hostname;
-    } catch {
-      return null;
-    }
-  };
-
   const loadItems = useCallback(async () => {
     const allItems = await storage.getFeedItems();
     let filtered = allItems.filter((item) => item.status === status);
@@ -43,49 +30,8 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     if (selectedFeedId) {
       const selectedFeed = feeds.find(f => f.id === selectedFeedId);
       if (selectedFeed) {
-        const feedHostname = normalizeHostname(selectedFeed.url);
-        
-        filtered = filtered.filter((item) => {
-          // Try multiple matching strategies:
-          // 1. Match by source field (item.source) to rssTitle - most reliable
-          //    rssTitle is the original RSS feed title that matches item.source and never changes
-          //    This works even after the user renames the feed
-          if (selectedFeed.rssTitle && item.source === selectedFeed.rssTitle) {
-            return true;
-          }
-          
-          // 1b. Fallback: If rssTitle is not set (for old feeds), try matching by name
-          //    This handles backwards compatibility with feeds added before rssTitle was introduced
-          if (!selectedFeed.rssTitle && item.source === selectedFeed.name) {
-            return true;
-          }
-          
-          // 2. For Medium feeds, items might be cross-posted to different domains
-          //    Check if the feed URL path matches the item URL path
-          if (feedHostname === 'medium.com') {
-            try {
-              const feedUrl = new URL(selectedFeed.url);
-              const feedPath = feedUrl.pathname.toLowerCase();
-              // Extract author from feed path (e.g., /feed/@101)
-              if (feedPath.includes('/feed/')) {
-                const authorPart = feedPath.split('/feed/')[1];
-                if (authorPart) {
-                  // Check if item URL contains this author identifier
-                  const itemUrl = new URL(item.url);
-                  if (itemUrl.pathname.toLowerCase().includes(authorPart)) {
-                    return true;
-                  }
-                }
-              }
-            } catch {
-              // If URL parsing fails, continue to next check
-            }
-          }
-          
-          // 3. Fallback to hostname matching for other feeds
-          const itemHostname = normalizeHostname(item.url);
-          return feedHostname && itemHostname && feedHostname === itemHostname;
-        });
+        // Use the shared matching function for consistent behavior
+        filtered = filtered.filter((item) => itemBelongsToFeed(item, selectedFeed));
       }
     }
     
