@@ -118,7 +118,15 @@ body {
   /* Sepia mode - serif font for body text */
   .theme-sepia .article-content,
   .theme-sepia article {
-    font-family: Georgia, 'Times New Roman', serif;
+    font-family: 'PT Serif', Georgia, 'Times New Roman', serif;
+    font-weight: 400;
+  }
+  
+  .theme-sepia .article-content h2,
+  .theme-sepia .article-content h3,
+  .theme-sepia article h2,
+  .theme-sepia article h3 {
+    font-weight: 700;
   }
 }
 
