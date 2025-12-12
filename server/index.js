@@ -940,6 +940,49 @@ app.post('/api/items/:itemId/summary', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/items/:itemId/ai-feature - Update item AI feature (insightful-reply, investor-analysis, founder-implications)
+app.post('/api/items/:itemId/ai-feature', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { featureType, content } = req.body;
+
+    const validFeatureTypes = ['insightful-reply', 'investor-analysis', 'founder-implications'];
+    if (!validFeatureTypes.includes(featureType)) {
+      return res.status(400).json({ error: `Invalid feature type. Must be one of: ${validFeatureTypes.join(', ')}` });
+    }
+
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content must be a string' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.updateFeedItemAIFeature(itemId, featureType, content);
+      return res.json(item);
+    }
+    
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    
+    // Map feature type to field name
+    const fieldMap = {
+      'insightful-reply': 'aiInsightfulReply',
+      'investor-analysis': 'aiInvestorAnalysis',
+      'founder-implications': 'aiFounderImplications',
+    };
+    items[index][fieldMap[featureType]] = content;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('Error updating AI feature:', error);
+    res.status(500).json({ error: 'Failed to update AI feature' });
+  }
+});
+
 // POST /api/items/:itemId/paywall - Update item paywall status
 app.post('/api/items/:itemId/paywall', requireAuth, async (req, res) => {
   try {

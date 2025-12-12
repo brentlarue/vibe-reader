@@ -472,6 +472,51 @@ export async function updateFeedItemSummary(itemId, summary) {
 }
 
 /**
+ * Update a feed item's AI feature (supports UUID or external_id/URL lookup)
+ * @param {string} itemId - Item UUID or external_id or URL
+ * @param {string} featureType - Feature type ('insightful-reply' | 'investor-analysis' | 'founder-implications')
+ * @param {string} content - AI feature content
+ * @returns {Promise<Object>} Updated item
+ */
+export async function updateFeedItemAIFeature(itemId, featureType, content) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  // Map feature type to database column
+  const columnMap = {
+    'insightful-reply': 'ai_insightful_reply',
+    'investor-analysis': 'ai_investor_analysis',
+    'founder-implications': 'ai_founder_implications',
+  };
+
+  const column = columnMap[featureType];
+  if (!column) {
+    throw new Error(`Invalid feature type: ${featureType}`);
+  }
+
+  // First, find the item to get its UUID
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update({ [column]: content })
+    .eq('id', item.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating AI feature:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
  * Update a feed item's paywall status (supports UUID or external_id/URL lookup)
  * @param {string} itemId - Item UUID or external_id or URL
  * @param {string} paywallStatus - Paywall status ('unknown' | 'free' | 'paid')
@@ -658,6 +703,9 @@ function transformFeedItem(dbItem) {
     contentSnippet: dbItem.content_snippet,
     fullContent: dbItem.full_content,
     aiSummary: dbItem.ai_summary,
+    aiInsightfulReply: dbItem.ai_insightful_reply,
+    aiInvestorAnalysis: dbItem.ai_investor_analysis,
+    aiFounderImplications: dbItem.ai_founder_implications,
     status: dbItem.status,
     paywallStatus: dbItem.paywall_status,
   };

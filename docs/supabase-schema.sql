@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS feed_items (
   content_snippet TEXT,
   full_content TEXT,
   ai_summary TEXT,
+  ai_insightful_reply TEXT,     -- AI-generated insightful reply
+  ai_investor_analysis TEXT,    -- AI-generated investor analysis
+  ai_founder_implications TEXT, -- AI-generated founder implications
   status TEXT NOT NULL DEFAULT 'inbox',  -- 'inbox' | 'saved' | 'bookmarked' | 'archived'
   paywall_status TEXT NOT NULL DEFAULT 'unknown',  -- 'unknown' | 'free' | 'paid'
   source TEXT,  -- Display name of the source (from RSS feed title)
@@ -47,6 +50,13 @@ CREATE TABLE IF NOT EXISTS feed_items (
   -- Ensure we don't insert duplicate items for the same feed
   UNIQUE(feed_id, url)
 );
+
+-- ============================================================================
+-- MIGRATION: Add AI feature columns (run if tables already exist)
+-- ============================================================================
+-- ALTER TABLE feed_items ADD COLUMN IF NOT EXISTS ai_insightful_reply TEXT;
+-- ALTER TABLE feed_items ADD COLUMN IF NOT EXISTS ai_investor_analysis TEXT;
+-- ALTER TABLE feed_items ADD COLUMN IF NOT EXISTS ai_founder_implications TEXT;
 
 -- Indexes for common query patterns
 CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id);

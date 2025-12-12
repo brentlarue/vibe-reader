@@ -125,11 +125,11 @@ export default function ArticleReader() {
       // Always get the latest item from storage to ensure we have the most up-to-date version
       const latestItem = await storage.getFeedItem(found.id) || found;
       setItem(latestItem);
-      // Reset AI feature results when article changes
+      // Load AI feature results from the item (persisted values)
       setAiFeatureResults({
-        'insightful-reply': null,
-        'investor-analysis': null,
-        'founder-implications': null,
+        'insightful-reply': latestItem.aiInsightfulReply || null,
+        'investor-analysis': latestItem.aiInvestorAnalysis || null,
+        'founder-implications': latestItem.aiFounderImplications || null,
       });
       setGeneratingFeature(null);
       summaryGenerationInProgress.current = null;
@@ -255,10 +255,24 @@ export default function ArticleReader() {
     
     try {
       const result = await generateAIFeature(item, featureType);
+      
+      // Update local state
       setAiFeatureResults(prev => ({
         ...prev,
         [featureType]: result
       }));
+      
+      // Persist to database
+      await storage.updateItemAIFeature(item.id, featureType, result);
+      console.log(`AI feature ${featureType} stored for item ${item.id}`);
+      
+      // Update the item state with the new AI feature
+      const fieldMap: Record<AIFeatureType, keyof FeedItem> = {
+        'insightful-reply': 'aiInsightfulReply',
+        'investor-analysis': 'aiInvestorAnalysis',
+        'founder-implications': 'aiFounderImplications',
+      };
+      setItem({ ...item, [fieldMap[featureType]]: result });
     } catch (error) {
       console.error(`Error generating ${featureType}:`, error);
       // Optionally show error to user

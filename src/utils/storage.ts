@@ -293,6 +293,37 @@ export const storage = {
   },
 
   /**
+   * Update a feed item's AI feature (insightful-reply, investor-analysis, founder-implications)
+   */
+  updateItemAIFeature: async (itemId: string, featureType: 'insightful-reply' | 'investor-analysis' | 'founder-implications', content: string): Promise<FeedItem> => {
+    try {
+      // URL-encode the itemId in case it contains special characters (like URLs)
+      const encodedId = encodeURIComponent(itemId);
+      const updated = await apiRequest<FeedItem>(`items/${encodedId}/ai-feature`, {
+        method: 'POST',
+        body: JSON.stringify({ featureType, content }),
+      });
+      
+      // Update local cache
+      const fieldMap: Record<string, keyof FeedItem> = {
+        'insightful-reply': 'aiInsightfulReply',
+        'investor-analysis': 'aiInvestorAnalysis',
+        'founder-implications': 'aiFounderImplications',
+      };
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const updatedItems = items.map(item => 
+        item.id === itemId ? { ...item, [fieldMap[featureType]]: content } : item
+      );
+      saveToLocalStorage(FEED_ITEMS_KEY, updatedItems);
+      
+      return updated;
+    } catch (error) {
+      console.error('Failed to update AI feature:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Delete a single feed item
    */
   removeFeedItem: async (itemId: string): Promise<void> => {

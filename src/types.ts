@@ -13,6 +13,9 @@ export interface FeedItem {
   publishedAt: string;
   contentSnippet: string;
   aiSummary?: string;
+  aiInsightfulReply?: string;
+  aiInvestorAnalysis?: string;
+  aiFounderImplications?: string;
   status: FeedItemStatus;
   fullContent?: string;
 }
