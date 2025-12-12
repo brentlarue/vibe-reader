@@ -1217,8 +1217,29 @@ app.post('/api/data/preferences', requireAuth, async (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: {
+      type: isSupabaseConfigured() ? 'supabase' : 'file',
+      configured: isSupabaseConfigured(),
+    },
+  };
+
+  // Test Supabase connection if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const feeds = await feedRepo.getFeeds();
+      health.database.connected = true;
+      health.database.feedCount = feeds.length;
+    } catch (error) {
+      health.database.connected = false;
+      health.database.error = error.message;
+    }
+  }
+
+  res.json(health);
 });
 
 // Serve static files from the Vite dist directory in production
