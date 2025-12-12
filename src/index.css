@@ -106,12 +106,14 @@ body {
 
 @layer components {
   .article-content {
-    @apply text-base sm:text-lg leading-relaxed;
+    @apply text-base sm:text-lg;
     color: var(--theme-text-secondary);
+    line-height: 1.75;
   }
 
   .article-content p {
-    @apply mb-6;
+    @apply mb-7;
+    line-height: 1.75;
   }
 
   .article-content h2 {
@@ -126,11 +128,13 @@ body {
 
   .article-content ul,
   .article-content ol {
-    @apply mb-6 pl-6;
+    @apply mb-7 pl-6;
+    line-height: 1.75;
   }
 
   .article-content li {
-    @apply mb-2;
+    @apply mb-3;
+    line-height: 1.75;
   }
 
   .article-content a {

@@ -33,7 +33,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this item?')) {
       await storage.removeFeedItem(item.id);
-      onStatusChange();
+    onStatusChange();
       // Trigger event for other components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
     }
@@ -131,8 +131,8 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
             color: 'var(--theme-text-secondary)'
           }}
         >
-          {item.contentSnippet}
-        </p>
+        {item.contentSnippet}
+      </p>
       )}
 
       <div className="flex items-center gap-4 sm:gap-6 flex-wrap mt-5" onClick={(e) => e.stopPropagation()}>

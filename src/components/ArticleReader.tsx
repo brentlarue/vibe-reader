@@ -616,11 +616,11 @@ export default function ArticleReader() {
         {hasMeaningfulContent ? (
           <div 
             className="article-content prose prose-lg max-w-none"
-            style={{ paddingLeft: '0', paddingRight: '0' }}
+            style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}
             dangerouslySetInnerHTML={{ __html: content }}
           />
         ) : (
-          <div className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
+          <div className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}>
             {!hadContentFromFeed ? (
               <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 No content available for this article. 
