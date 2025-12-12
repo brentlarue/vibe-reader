@@ -287,6 +287,22 @@ export default function ArticleReader() {
     });
   };
 
+  const calculateReadTime = (content: string): string => {
+    if (!content) return '1 min';
+    
+    // Strip HTML tags and get plain text
+    const text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    // Count words (split by whitespace)
+    const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
+    
+    // Average reading speed: 200 words per minute
+    const wordsPerMinute = 200;
+    const minutes = Math.max(1, Math.round(wordCount / wordsPerMinute));
+    
+    return minutes <= 1 ? `${minutes} min` : `${minutes} mins`;
+  };
+
   const handleStatusChange = async (newStatus: FeedItem['status']) => {
     try {
       await storage.updateItemStatus(item.id, newStatus);
@@ -678,10 +694,12 @@ export default function ArticleReader() {
 
       <article ref={articleRef} className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
         <header className="mb-8 sm:mb-12">
-          <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm mb-3 sm:mb-4" style={{ color: 'var(--theme-text-muted)' }}>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm mb-3 sm:mb-4" style={{ color: 'var(--theme-text-muted)' }}>
             <span className="font-medium">{item.source}</span>
             <span>·</span>
             <time>{formatDate(item.publishedAt)}</time>
+            <span>·</span>
+            <span>{calculateReadTime(item.fullContent || item.contentSnippet || '')}</span>
           </div>
           
           <h1 
