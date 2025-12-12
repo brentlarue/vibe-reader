@@ -295,13 +295,15 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
   return (
     <div 
-      className="w-64 lg:w-64 border-r h-screen flex flex-col relative bg-white lg:bg-transparent flex-shrink-0"
+      className="w-64 lg:w-64 border-r flex flex-col relative bg-white lg:bg-transparent flex-shrink-0"
       style={{ 
         backgroundColor: 'var(--theme-card-bg)', 
         borderColor: 'var(--theme-border)',
         color: 'var(--theme-text)',
         width: '16rem',
         maxWidth: '85vw',
+        height: '100dvh', // Use dynamic viewport height for iOS
+        minHeight: '-webkit-fill-available', // Fallback for older iOS
       }}
     >
       <div 
@@ -691,7 +693,10 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         </div>
       </nav>
       
-      <div className="mt-auto pb-6">
+      <div 
+        className="mt-auto pb-6"
+        style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+      >
         <div className="px-4 sm:px-6">
           <SettingsMenu />
         </div>

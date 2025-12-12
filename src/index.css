@@ -11,6 +11,24 @@ html, body {
 body {
   position: relative;
   width: 100%;
+  /* iOS safe area support */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* iOS standalone mode (Add to Home Screen) */
+@media all and (display-mode: standalone) {
+  body {
+    /* Ensure background extends under status bar */
+    background-color: var(--theme-bg);
+  }
+  
+  /* Account for iOS status bar height in standalone mode */
+  #root {
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
 }
 
 /* Touch optimization */

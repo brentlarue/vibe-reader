@@ -94,5 +94,18 @@ function applyTheme(theme: Theme) {
   
   // Add current theme class
   root.classList.add(`theme-${theme}`);
+
+  // Update meta theme-color for iOS status bar
+  const themeColors: Record<Theme, string> = {
+    light: '#ffffff',
+    dark: '#1a1a1a',
+    sepia: '#f4ecd8',
+    mint: '#f0fdf4',
+  };
+  
+  const metaThemeColor = document.getElementById('theme-color-meta') as HTMLMetaElement | null;
+  if (metaThemeColor) {
+    metaThemeColor.content = themeColors[theme];
+  }
 }
 
