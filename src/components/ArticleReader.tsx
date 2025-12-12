@@ -36,6 +36,11 @@ export default function ArticleReader() {
     'founder-implications': null,
   });
 
+  // Reading progress state
+  const [readingProgress, setReadingProgress] = useState(0);
+  const articleContentRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
+
   // Load navigation context from sessionStorage
   useEffect(() => {
     const stored = sessionStorage.getItem(NAV_CONTEXT_KEY);
@@ -48,6 +53,121 @@ export default function ArticleReader() {
       }
     }
   }, []);
+
+  // Reading progress tracking (only on mobile/tablet)
+  useEffect(() => {
+    if (!articleRef.current || !item) {
+      setReadingProgress(0);
+      return;
+    }
+
+    const updateProgress = () => {
+      const article = articleRef.current;
+      if (!article) {
+        setReadingProgress(0);
+        return;
+      }
+
+      // Find the scrollable container (main element)
+      const scrollContainer = document.querySelector('main') as HTMLElement;
+      if (!scrollContainer) {
+        setReadingProgress(0);
+        return;
+      }
+
+      // Get scroll position of the main container
+      const scrollTop = scrollContainer.scrollTop;
+      const containerHeight = scrollContainer.clientHeight;
+      
+      // Get article position relative to the scroll container
+      const articleRect = article.getBoundingClientRect();
+      const containerRect = scrollContainer.getBoundingClientRect();
+      
+      // Calculate article position within the scroll container
+      // When scrollTop is 0, article top relative to container top
+      const articleTopRelativeToContainer = articleRect.top - containerRect.top + scrollTop;
+      const articleBottomRelativeToContainer = articleTopRelativeToContainer + articleRect.height;
+      
+      const articleLength = articleBottomRelativeToContainer - articleTopRelativeToContainer;
+      
+      if (articleLength <= 0) {
+        setReadingProgress(0);
+        return;
+      }
+      
+      // Calculate progress: 
+      // 0% when article top reaches container top (scrollTop = articleTopRelativeToContainer)
+      // 100% when article bottom reaches container top (scrollTop + containerHeight = articleBottomRelativeToContainer)
+      // This means scrollTop should be articleBottomRelativeToContainer - containerHeight for 100%
+      
+      // Current viewport bottom in scroll coordinates
+      const viewportBottom = scrollTop + containerHeight;
+      
+      let progress = 0;
+      
+      // If article top hasn't reached container top yet
+      if (scrollTop < articleTopRelativeToContainer) {
+        progress = 0;
+      } 
+      // If article bottom has reached or passed container top (100% complete)
+      else if (viewportBottom >= articleBottomRelativeToContainer) {
+        progress = 100;
+      } 
+      // In the middle - calculate percentage
+      else {
+        // How much of the article has been scrolled past the start
+        const scrolledPastStart = scrollTop - articleTopRelativeToContainer;
+        // The scrollable distance is articleLength minus containerHeight (we stop when bottom is visible)
+        const scrollableDistance = articleLength - containerHeight;
+        
+        if (scrollableDistance > 0) {
+          progress = Math.min(100, Math.max(0, (scrolledPastStart / scrollableDistance) * 100));
+        } else {
+          // Article fits in viewport or is shorter
+          progress = 100;
+        }
+      }
+      
+      setReadingProgress(progress);
+    };
+
+    // Find scroll container once
+    const scrollContainer = document.querySelector('main') as HTMLElement;
+    if (!scrollContainer) {
+      return;
+    }
+
+    // Initial calculation with multiple attempts to ensure DOM is ready
+    const initialTimeout1 = setTimeout(updateProgress, 100);
+    const initialTimeout2 = setTimeout(updateProgress, 300);
+    const initialTimeout3 = setTimeout(updateProgress, 600);
+    
+    // Listen to scroll on the main container
+    scrollContainer.addEventListener('scroll', updateProgress, { passive: true });
+    window.addEventListener('resize', updateProgress, { passive: true });
+    
+    // Use MutationObserver to detect when content changes
+    const observer = new MutationObserver(() => {
+      setTimeout(updateProgress, 100);
+    });
+    
+    if (articleRef.current) {
+      observer.observe(articleRef.current, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+      });
+    }
+
+    return () => {
+      clearTimeout(initialTimeout1);
+      clearTimeout(initialTimeout2);
+      clearTimeout(initialTimeout3);
+      scrollContainer.removeEventListener('scroll', updateProgress);
+      window.removeEventListener('resize', updateProgress);
+      observer.disconnect();
+    };
+  }, [item, hasAttemptedLoad]);
 
   // Navigate to next item in the list
   const navigateToNext = useCallback(() => {
@@ -506,8 +626,43 @@ export default function ArticleReader() {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto lg:px-0">
-      <button
+    <>
+      {/* Reading Progress Bar - only visible on mobile/tablet */}
+      {item && (
+        <div 
+          className="lg:hidden" 
+          style={{ 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            width: '100vw',
+            height: '4px',
+            zIndex: 99999,
+            pointerEvents: 'none',
+            margin: 0,
+            padding: 0,
+            backgroundColor: 'transparent',
+          }}
+        >
+          <div 
+            style={{ 
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: `${readingProgress}%`,
+              height: '4px',
+              backgroundColor: 'var(--theme-button-bg)',
+              transition: 'width 0.15s ease-out',
+              minWidth: readingProgress > 0 ? '1px' : '0',
+              opacity: 1,
+            }}
+          />
+        </div>
+      )}
+
+      <div className="w-full max-w-3xl mx-auto lg:px-0">
+        <button
         onClick={handleBack}
         className="mb-6 sm:mb-8 mt-14 lg:mt-0 text-sm font-medium transition-colors touch-manipulation py-2 px-2 lg:-ml-2"
         style={{ color: 'var(--theme-text-muted)' }}
@@ -521,7 +676,7 @@ export default function ArticleReader() {
         ← Back
       </button>
 
-      <article className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
+      <article ref={articleRef} className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
         <header className="mb-8 sm:mb-12">
           <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm mb-3 sm:mb-4" style={{ color: 'var(--theme-text-muted)' }}>
             <span className="font-medium">{item.source}</span>
@@ -641,12 +796,17 @@ export default function ArticleReader() {
 
         {hasMeaningfulContent ? (
           <div 
+            ref={articleContentRef}
             className="article-content prose prose-lg max-w-none"
             style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}
             dangerouslySetInnerHTML={{ __html: content }}
           />
         ) : (
-          <div className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}>
+          <div 
+            ref={articleContentRef}
+            className="prose prose-lg max-w-none" 
+            style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}
+          >
             {!hadContentFromFeed ? (
               <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 No content available for this article. 
@@ -840,6 +1000,7 @@ export default function ArticleReader() {
           />
         </div>
       </article>
+      </div>
 
       {/* Floating next button - bottom right with safe area for iOS */}
       {/* z-30 so it appears under sidebar overlay (z-40) when open */}
@@ -871,6 +1032,6 @@ export default function ArticleReader() {
           </svg>
         </button>
       )}
-    </div>
+    </>
   );
 }
