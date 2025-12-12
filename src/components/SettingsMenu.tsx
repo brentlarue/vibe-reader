@@ -53,6 +53,14 @@ export default function SettingsMenu() {
         <span>Settings</span>
       </button>
 
+      {/* Click outside overlay - rendered first so it's behind the menu */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
       {/* Settings Menu Card */}
       {isOpen && (
         <div
@@ -61,7 +69,6 @@ export default function SettingsMenu() {
             backgroundColor: 'var(--theme-card-bg)',
             border: '1px solid var(--theme-border)',
           }}
-          onClick={(e) => e.stopPropagation()}
         >
           {/* Theme Section */}
           <div>
@@ -129,14 +136,6 @@ export default function SettingsMenu() {
             <span>Log out</span>
           </button>
         </div>
-      )}
-
-      {/* Click outside to close */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
       )}
     </div>
   );
