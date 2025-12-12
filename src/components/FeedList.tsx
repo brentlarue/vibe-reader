@@ -17,6 +17,7 @@ type SortOrder = 'newest' | 'oldest';
 
 export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: FeedListProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
+  const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const location = useLocation();
   const scrollKey = `scrollPosition_${status}_${selectedFeedId || 'all'}`;
@@ -43,9 +44,13 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     });
     
     setItems(filtered);
+    setHasAttemptedLoad(true);
   }, [status, sortOrder, selectedFeedId, feeds]);
 
   useEffect(() => {
+    // Reset load state when status or selectedFeedId changes
+    setHasAttemptedLoad(false);
+    setItems([]);
     loadItems();
     // Reset scroll restoration flag when view changes
     hasRestoredScroll.current = false;
@@ -156,7 +161,8 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     }
   }, [onRefresh, loadItems]);
 
-  if (items.length === 0) {
+  // Only show "no items" message if we've attempted to load and items array is empty
+  if (hasAttemptedLoad && items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
     return (
       <PullToRefresh onRefresh={handleRefresh}>
@@ -172,6 +178,11 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
         </div>
       </PullToRefresh>
     );
+  }
+
+  // Don't render anything until we've attempted to load
+  if (!hasAttemptedLoad) {
+    return null;
   }
 
   return (

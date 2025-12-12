@@ -19,6 +19,7 @@ export default function ArticleReader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [item, setItem] = useState<FeedItem | null>(null);
+  const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const summaryGenerationInProgress = useRef<string | null>(null);
   const [navContext, setNavContext] = useState<NavContext | null>(null);
@@ -76,6 +77,10 @@ export default function ArticleReader() {
   useEffect(() => {
     if (!id) return;
 
+    // Reset state when ID changes
+    setItem(null);
+    setHasAttemptedLoad(false);
+
     const loadArticle = async () => {
       // Decode the ID in case it was URL-encoded in the route
       const decodedId = decodeURIComponent(id);
@@ -113,6 +118,7 @@ export default function ArticleReader() {
           console.error('Article not found after all attempts. Available items:', allItems.length);
           console.error('Looking for ID:', decodedId);
           console.error('Sample stored IDs:', allItems.slice(0, 3).map(i => i.id));
+          setHasAttemptedLoad(true);
           setItem(null);
           return;
         }
@@ -125,6 +131,7 @@ export default function ArticleReader() {
       // Always get the latest item from storage to ensure we have the most up-to-date version
       const latestItem = await storage.getFeedItem(found.id) || found;
       setItem(latestItem);
+      setHasAttemptedLoad(true);
       // Load AI feature results from the item (persisted values)
       setAiFeatureResults({
         'insightful-reply': latestItem.aiInsightfulReply || null,
@@ -138,12 +145,18 @@ export default function ArticleReader() {
     loadArticle();
   }, [id]);
 
-  if (!item) {
+  // Only show "not found" message if we've attempted to load and item is still null
+  if (hasAttemptedLoad && !item) {
     return (
       <div className="flex items-center justify-center h-full">
         <p style={{ color: 'var(--theme-text-muted)' }}>Article not found</p>
       </div>
     );
+  }
+
+  // Don't render anything until we've attempted to load
+  if (!hasAttemptedLoad || !item) {
+    return null;
   }
 
   const formatDate = (dateString: string) => {
