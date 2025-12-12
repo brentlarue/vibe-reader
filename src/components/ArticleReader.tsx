@@ -128,15 +128,14 @@ export default function ArticleReader() {
         console.log('Found article:', found.id, found.title);
       }
       
-      // Always get the latest item from storage to ensure we have the most up-to-date version
-      const latestItem = await storage.getFeedItem(found.id) || found;
-      setItem(latestItem);
+      // Use the found item directly - no need for an extra fetch since getFeedItem already returns fresh data
+      setItem(found);
       setHasAttemptedLoad(true);
       // Load AI feature results from the item (persisted values)
       setAiFeatureResults({
-        'insightful-reply': latestItem.aiInsightfulReply || null,
-        'investor-analysis': latestItem.aiInvestorAnalysis || null,
-        'founder-implications': latestItem.aiFounderImplications || null,
+        'insightful-reply': found.aiInsightfulReply || null,
+        'investor-analysis': found.aiInvestorAnalysis || null,
+        'founder-implications': found.aiFounderImplications || null,
       });
       setGeneratingFeature(null);
       summaryGenerationInProgress.current = null;

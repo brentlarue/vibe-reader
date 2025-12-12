@@ -48,9 +48,9 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   }, [status, sortOrder, selectedFeedId, feeds]);
 
   useEffect(() => {
-    // Reset load state when status or selectedFeedId changes
+    // Don't clear items immediately - keep them visible while loading new data
+    // Only clear load state so we know we're fetching
     setHasAttemptedLoad(false);
-    setItems([]);
     loadItems();
     // Reset scroll restoration flag when view changes
     hasRestoredScroll.current = false;
@@ -180,8 +180,10 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     );
   }
 
-  // Don't render anything until we've attempted to load
-  if (!hasAttemptedLoad) {
+  // If we haven't attempted to load yet but have items, show them (optimistic rendering)
+  // This prevents the flash when navigating between views
+  // Only block rendering if we have no items AND haven't attempted load (true initial state)
+  if (!hasAttemptedLoad && items.length === 0) {
     return null;
   }
 
