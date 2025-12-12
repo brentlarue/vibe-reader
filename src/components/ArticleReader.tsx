@@ -621,9 +621,39 @@ export default function ArticleReader() {
     return result.join('\n');
   };
 
+  // Process HTML content to make external links open in new tab
+  const processExternalLinks = (html: string): string => {
+    if (!html) return html;
+    
+    // Use DOMParser to safely parse and modify HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Find all anchor tags
+    const links = doc.querySelectorAll('a[href]');
+    
+    links.forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+      
+      // Skip anchor links and javascript: links
+      if (href.startsWith('#') || href.startsWith('javascript:')) {
+        return;
+      }
+      
+      // Add target="_blank" and rel="noopener noreferrer" to external links
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener noreferrer');
+    });
+    
+    // Get the processed HTML from the body
+    return doc.body.innerHTML;
+  };
+
   // Get content - prefer fullContent, fallback to contentSnippet
-  const content = item.fullContent || item.contentSnippet || '';
-  const contentText = content.replace(/<[^>]*>/g, '').trim(); // Strip HTML for comparison
+  const rawContent = item.fullContent || item.contentSnippet || '';
+  const content = processExternalLinks(rawContent);
+  const contentText = rawContent.replace(/<[^>]*>/g, '').trim(); // Strip HTML for comparison
   
   // Check if content exists and is meaningful (not just the title)
   const hasMeaningfulContent = content && content.trim().length > 0 && 
@@ -980,7 +1010,7 @@ export default function ArticleReader() {
                 wordWrap: 'break-word',
                 overflowWrap: 'break-word'
               }}
-              dangerouslySetInnerHTML={{ __html: markdownToHtml(aiFeatureResults['investor-analysis'], true, true, true, false) }}
+              dangerouslySetInnerHTML={{ __html: processExternalLinks(markdownToHtml(aiFeatureResults['investor-analysis'], true, true, true, false)) }}
             />
           </div>
         )}
@@ -1004,7 +1034,7 @@ export default function ArticleReader() {
                 wordWrap: 'break-word',
                 overflowWrap: 'break-word'
               }}
-              dangerouslySetInnerHTML={{ __html: markdownToHtml(aiFeatureResults['founder-implications'], false, false, false, true, true) }}
+              dangerouslySetInnerHTML={{ __html: processExternalLinks(markdownToHtml(aiFeatureResults['founder-implications'], false, false, false, true, true)) }}
             />
           </div>
         )}
