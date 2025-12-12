@@ -301,8 +301,8 @@ export async function getFeedItems({ status, feedId, limit } = {}) {
 }
 
 /**
- * Get a single feed item by ID
- * @param {string} itemId - Item UUID
+ * Get a single feed item by ID (supports UUID or external_id/URL lookup)
+ * @param {string} itemId - Item UUID or external_id or URL
  * @returns {Promise<Object|null>} Feed item or null
  */
 export async function getFeedItem(itemId) {
@@ -310,16 +310,43 @@ export async function getFeedItem(itemId) {
     throw new Error('Supabase not configured');
   }
 
-  const { data, error } = await supabase
+  // First try by UUID id
+  let { data, error } = await supabase
     .from('feed_items')
     .select('*')
     .eq('id', itemId)
     .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null; // Not found
+  // If not found and itemId looks like a URL or non-UUID, try external_id
+  if (error?.code === 'PGRST116' || (error && !data)) {
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId);
+    if (!isUUID) {
+      // Try by external_id
+      const result = await supabase
+        .from('feed_items')
+        .select('*')
+        .eq('external_id', itemId)
+        .single();
+      
+      if (!result.error) {
+        return transformFeedItem(result.data);
+      }
+      
+      // Try by URL
+      const urlResult = await supabase
+        .from('feed_items')
+        .select('*')
+        .eq('url', itemId)
+        .single();
+      
+      if (!urlResult.error) {
+        return transformFeedItem(urlResult.data);
+      }
     }
+    return null; // Not found
+  }
+
+  if (error) {
     console.error('[DB] Error fetching feed item:', error);
     throw error;
   }
@@ -376,8 +403,8 @@ export async function upsertFeedItems(feedId, items) {
 }
 
 /**
- * Update a feed item's status
- * @param {string} itemId - Item UUID
+ * Update a feed item's status (supports UUID or external_id/URL lookup)
+ * @param {string} itemId - Item UUID or external_id or URL
  * @param {string} status - New status ('inbox' | 'saved' | 'bookmarked' | 'archived')
  * @returns {Promise<Object>} Updated item
  */
@@ -391,10 +418,16 @@ export async function updateFeedItemStatus(itemId, status) {
     throw new Error(`Invalid status: ${status}`);
   }
 
+  // First, find the item to get its UUID
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
   const { data, error } = await supabase
     .from('feed_items')
     .update({ status })
-    .eq('id', itemId)
+    .eq('id', item.id)
     .select()
     .single();
 
@@ -407,8 +440,8 @@ export async function updateFeedItemStatus(itemId, status) {
 }
 
 /**
- * Update a feed item's AI summary
- * @param {string} itemId - Item UUID
+ * Update a feed item's AI summary (supports UUID or external_id/URL lookup)
+ * @param {string} itemId - Item UUID or external_id or URL
  * @param {string} summary - AI summary text
  * @returns {Promise<Object>} Updated item
  */
@@ -417,10 +450,16 @@ export async function updateFeedItemSummary(itemId, summary) {
     throw new Error('Supabase not configured');
   }
 
+  // First, find the item to get its UUID
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
   const { data, error } = await supabase
     .from('feed_items')
     .update({ ai_summary: summary })
-    .eq('id', itemId)
+    .eq('id', item.id)
     .select()
     .single();
 
@@ -433,8 +472,8 @@ export async function updateFeedItemSummary(itemId, summary) {
 }
 
 /**
- * Update a feed item's paywall status
- * @param {string} itemId - Item UUID
+ * Update a feed item's paywall status (supports UUID or external_id/URL lookup)
+ * @param {string} itemId - Item UUID or external_id or URL
  * @param {string} paywallStatus - Paywall status ('unknown' | 'free' | 'paid')
  * @returns {Promise<Object>} Updated item
  */
@@ -448,10 +487,16 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
     throw new Error(`Invalid paywall status: ${paywallStatus}`);
   }
 
+  // First, find the item to get its UUID
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
   const { data, error } = await supabase
     .from('feed_items')
     .update({ paywall_status: paywallStatus })
-    .eq('id', itemId)
+    .eq('id', item.id)
     .select()
     .single();
 
@@ -464,8 +509,8 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
 }
 
 /**
- * Delete a feed item
- * @param {string} itemId - Item UUID
+ * Delete a feed item (supports UUID or external_id/URL lookup)
+ * @param {string} itemId - Item UUID or external_id or URL
  * @returns {Promise<void>}
  */
 export async function deleteFeedItem(itemId) {
@@ -473,10 +518,16 @@ export async function deleteFeedItem(itemId) {
     throw new Error('Supabase not configured');
   }
 
+  // First, find the item to get its UUID
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
   const { error } = await supabase
     .from('feed_items')
     .delete()
-    .eq('id', itemId);
+    .eq('id', item.id);
 
   if (error) {
     console.error('[DB] Error deleting feed item:', error);
