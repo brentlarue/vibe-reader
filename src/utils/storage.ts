@@ -210,7 +210,9 @@ export const storage = {
    */
   getFeedItem: async (id: string): Promise<FeedItem | null> => {
     try {
-      const item = await apiRequest<FeedItem>(`items/${id}`);
+      // URL-encode the id in case it contains special characters (like URLs)
+      const encodedId = encodeURIComponent(id);
+      const item = await apiRequest<FeedItem>(`items/${encodedId}`);
       return item;
     } catch (error) {
       // Fallback to local cache
@@ -243,7 +245,9 @@ export const storage = {
    */
   updateItemStatus: async (itemId: string, status: FeedItem['status']): Promise<FeedItem> => {
     try {
-      const updated = await apiRequest<FeedItem>(`items/${itemId}/status`, {
+      // URL-encode the itemId in case it contains special characters (like URLs)
+      const encodedId = encodeURIComponent(itemId);
+      const updated = await apiRequest<FeedItem>(`items/${encodedId}/status`, {
         method: 'POST',
         body: JSON.stringify({ status }),
       });
@@ -267,7 +271,9 @@ export const storage = {
    */
   updateItemSummary: async (itemId: string, summary: string): Promise<FeedItem> => {
     try {
-      const updated = await apiRequest<FeedItem>(`items/${itemId}/summary`, {
+      // URL-encode the itemId in case it contains special characters (like URLs)
+      const encodedId = encodeURIComponent(itemId);
+      const updated = await apiRequest<FeedItem>(`items/${encodedId}/summary`, {
         method: 'POST',
         body: JSON.stringify({ summary }),
       });
@@ -291,7 +297,9 @@ export const storage = {
    */
   removeFeedItem: async (itemId: string): Promise<void> => {
     try {
-      await apiRequest(`items/${itemId}`, {
+      // URL-encode the itemId in case it contains special characters (like URLs)
+      const encodedId = encodeURIComponent(itemId);
+      await apiRequest(`items/${encodedId}`, {
         method: 'DELETE',
       });
       
