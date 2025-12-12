@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
-  <rect width="180" height="180" fill="#000000"/>
-  <text x="90" y="105" font-size="110" text-anchor="middle">📡</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <!-- Black background -->
+  <rect width="180" height="180" fill="#000000" rx="0"/>
+  <!-- Satellite antenna emoji centered -->
+  <text x="90" y="130" font-size="120" text-anchor="middle" dominant-baseline="central" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif">📡</text>
 </svg>
-

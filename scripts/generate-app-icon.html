@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate App Icon</title>
+</head>
+<body>
+  <h1>Generate iOS App Icon (PNG)</h1>
+  <canvas id="canvas" width="180" height="180" style="border: 1px solid #ccc; margin: 20px;"></canvas>
+  <br>
+  <button onclick="downloadIcon()">Download 180x180 PNG</button>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Fill black background
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 180, 180);
+    
+    // Draw emoji
+    ctx.font = '120px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📡', 90, 90);
+    
+    function downloadIcon() {
+      canvas.toBlob(function(blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'apple-touch-icon.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    }
+    
+    // Auto-download on load (for convenience)
+    window.onload = function() {
+      setTimeout(downloadIcon, 500);
+    };
+  </script>
+</body>
+</html>
+
