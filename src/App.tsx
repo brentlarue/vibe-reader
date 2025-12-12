@@ -153,7 +153,8 @@ function App() {
         console.log('Refreshing feed:', feed.url);
         
         // fetchRss now returns { items, feedTitle } with deduplication, sorting, and limiting
-        const { items: feedItems, feedTitle } = await fetchRss(feed.url, existingItems);
+        // Pass feed.rssTitle so it can match existing items for this specific feed
+        const { items: feedItems, feedTitle } = await fetchRss(feed.url, existingItems, feed.rssTitle);
 
         if (feedItems.length > 0) {
           console.log(`Refresh feed ${feed.url}: got ${feedItems.length} new items after deduplication`);
@@ -167,8 +168,9 @@ function App() {
           console.log(`Refresh feed ${feed.url}: no new items`);
         }
 
-        // Update rssTitle if it's missing (for backwards compatibility with old feeds)
-        if (!feed.rssTitle) {
+        // Always update rssTitle to ensure it matches the current RSS feed title
+        // This ensures items can be correctly matched even if feed was renamed or RSS title changed
+        if (!feed.rssTitle || feed.rssTitle !== feedTitle) {
           try {
             const { apiFetch } = await import('./utils/apiFetch');
             await apiFetch(`/api/feeds/${feed.id}`, {

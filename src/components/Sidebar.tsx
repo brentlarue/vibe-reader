@@ -62,7 +62,8 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       // Fetch the feed first to get its title and items
       console.log('Fetching feed to validate:', normalizedUrl);
       const existingItems = await storage.getFeedItems();
-      const { items: newItems, feedTitle: actualFeedTitle } = await fetchRss(normalizedUrl, existingItems);
+      // No rssTitle yet for new feeds, pass undefined - will match by feedTitle after fetch
+      const { items: newItems, feedTitle: actualFeedTitle } = await fetchRss(normalizedUrl, existingItems, undefined);
 
       // Create feed with the actual title from RSS
       try {

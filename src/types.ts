@@ -6,6 +6,7 @@ export type Theme = 'light' | 'dark' | 'sepia' | 'hn';
 
 export interface FeedItem {
   id: string;
+  feedId?: string; // Feed UUID (from database)
   source: string;
   sourceType: SourceType;
   title: string;

@@ -102,10 +102,11 @@ export function formatUrlAsTitle(url: string): string {
 
 /**
  * Fetches and parses an RSS feed from a URL using our server-side proxy
- * Returns FeedItem[] with the 5 most recent items, sorted by publishedAt descending
+ * Returns FeedItem[] with up to 5 items that are newer than the newest existing item for this feed
+ * Items are sorted by publishedAt descending
  * Also returns the feed title from the RSS feed
  */
-export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []): Promise<{ items: FeedItem[], feedTitle: string }> {
+export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = [], feedRssTitle?: string): Promise<{ items: FeedItem[], feedTitle: string }> {
   console.log('Fetching RSS for', feedUrl);
   
   try {
@@ -138,7 +139,28 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
     // Get feed title or use hostname
     const feedTitle = data.feed?.title || formatUrlAsTitle(feedUrl);
 
-    // Map all rss2json items to FeedItems first (before deduplication)
+    // Find existing items for this specific feed (for determining newest existing article)
+    // Match by source field (which should be the rssTitle)
+    const feedExistingItems = existingItems.filter(item => {
+      // Match by source - prefer feedRssTitle if provided, otherwise use feedTitle from RSS
+      const matchTitle = feedRssTitle || feedTitle;
+      return item.source === matchTitle;
+    });
+
+    // Find the newest existing item's publishedAt timestamp
+    let newestExistingTimestamp: number | null = null;
+    if (feedExistingItems.length > 0) {
+      const timestamps = feedExistingItems
+        .map(item => new Date(item.publishedAt).getTime())
+        .filter(time => !isNaN(time));
+      
+      if (timestamps.length > 0) {
+        newestExistingTimestamp = Math.max(...timestamps);
+        console.log('Newest existing item for feed:', feedTitle, 'timestamp:', new Date(newestExistingTimestamp).toISOString());
+      }
+    }
+
+    // Map all rss2json items to FeedItems first (before deduplication and filtering)
     // This allows us to sort by date and take the 5 most recent, then filter duplicates
     const allFeedItems: FeedItem[] = data.items
       .map((item: any, index: number) => {
@@ -168,9 +190,22 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
           console.log('Generated ID from URL:', { originalUrl: url, id: id.substring(0, 100) });
         }
 
-        // Parse date
-        const pubDate = item.pubDate ? new Date(item.pubDate) : new Date();
-        const publishedAt = isNaN(pubDate.getTime()) ? new Date().toISOString() : pubDate.toISOString();
+        // Parse date - handle null from server (means no date found in feed)
+        let publishedAt: string;
+        if (item.pubDate) {
+          const pubDate = new Date(item.pubDate);
+          if (!isNaN(pubDate.getTime())) {
+            publishedAt = pubDate.toISOString();
+          } else {
+            // Invalid date string - log warning but still use it
+            console.warn('Invalid date format for item:', item.title, item.pubDate);
+            publishedAt = new Date().toISOString();
+          }
+        } else {
+          // No date provided - use current time as fallback (should be rare after server fix)
+          console.warn('No publication date found for item:', item.title || item.link);
+          publishedAt = new Date().toISOString();
+        }
 
         // Extract content - rss2json provides content, description, and contentSnippet
         // Atom feeds may use different field names, so check multiple possibilities
@@ -217,6 +252,21 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
         return feedItem;
       });
 
+    // Normalize URLs for better deduplication (remove trailing slashes, normalize query params)
+    const normalizeUrl = (url: string): string => {
+      if (!url) return '';
+      try {
+        const urlObj = new URL(url);
+        // Remove trailing slash from pathname
+        urlObj.pathname = urlObj.pathname.replace(/\/$/, '');
+        // Sort query params for consistency
+        urlObj.search = new URLSearchParams(urlObj.searchParams).toString();
+        return urlObj.toString();
+      } catch {
+        return url.trim().replace(/\/$/, '');
+      }
+    };
+
     // Sort by publishedAt descending (newest first)
     allFeedItems.sort((a, b) => {
       const dateA = new Date(a.publishedAt).getTime();
@@ -224,29 +274,71 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = []):
       return dateB - dateA;
     });
 
-    // Take the 5 most recent items from the feed first
-    const top5Items = allFeedItems.slice(0, 5);
+    // Filter to only include items newer than the newest existing item (if any)
+    let itemsNewerThanExisting = allFeedItems;
+    if (newestExistingTimestamp !== null) {
+      itemsNewerThanExisting = allFeedItems.filter(item => {
+        const itemTimestamp = new Date(item.publishedAt).getTime();
+        // Only include items that are newer (greater timestamp) than the newest existing
+        // Use > (not >=) to avoid re-fetching items with the exact same timestamp
+        return !isNaN(itemTimestamp) && itemTimestamp > newestExistingTimestamp!;
+      });
+      console.log('Filtered to items newer than existing:', itemsNewerThanExisting.length, 'out of', allFeedItems.length, 'total items');
+    } else {
+      console.log('No existing items found for feed, will consider all items (up to 5 newest)');
+    }
 
     // Create sets for deduplication - check against ALL existing items (regardless of status)
-    // This ensures we respect posts that have been moved to different views
-    const existingUrls = new Set(existingItems.map(item => item.url).filter(Boolean));
-    const existingIds = new Set(existingItems.map(item => item.id));
+    // Normalize URLs for comparison
+    const existingUrls = new Set(
+      existingItems
+        .map(item => normalizeUrl(item.url))
+        .filter(Boolean)
+    );
+    const existingIds = new Set(existingItems.map(item => item.id).filter(Boolean));
+    
+    // Also check by normalized URL to catch items where URL changed slightly
+    const existingNormalizedUrls = new Set(
+      existingItems
+        .map(item => {
+          if (item.id && !item.id.startsWith('http')) {
+            // If ID is not a URL, check if it matches any existing item's normalized URL
+            return null;
+          }
+          return normalizeUrl(item.id || item.url);
+        })
+        .filter(Boolean)
+    );
 
-    // Filter out duplicates from the top 5 - only return items that don't exist yet
-    // This ensures we always get the 5 most recent posts, but skip ones we already have
-    const feedItems = top5Items.filter(item => {
-      // Skip if duplicate - check both by ID and by URL
-      // This respects items in any status (inbox, saved, bookmarked, archived)
-      const isDuplicate = existingIds.has(item.id) || 
-                         (item.url && existingUrls.has(item.url)) ||
-                         (item.id && existingIds.has(item.id));
-      return !isDuplicate;
-    });
+    // Filter out duplicates from items that are newer than existing, then limit to 5
+    // We filter duplicates first, then take top 5 of what's new
+    const newItems: FeedItem[] = [];
+    for (const item of itemsNewerThanExisting) {
+      if (newItems.length >= 5) break; // Stop once we have 5 new items
+      
+      const normalizedItemUrl = normalizeUrl(item.url);
+      // Only normalize ID if it looks like a URL (starts with http)
+      const normalizedItemId = item.id.startsWith('http') ? normalizeUrl(item.id) : item.id;
+      
+      // Check for duplicates by multiple methods:
+      // 1. Exact ID match
+      // 2. Normalized URL match (handles trailing slash, query param differences)
+      // 3. If ID is a URL, check normalized ID against existing normalized URLs
+      const isDuplicate = 
+        existingIds.has(item.id) ||
+        (normalizedItemUrl && existingUrls.has(normalizedItemUrl)) ||
+        (item.id.startsWith('http') && normalizedItemId && existingNormalizedUrls.has(normalizedItemId));
+      
+      if (!isDuplicate) {
+        newItems.push(item);
+      }
+    }
 
-    console.log('Fetched', feedItems.length, 'items from', feedUrl, `(checked top 5 most recent, ${top5Items.length - feedItems.length} were duplicates)`);
+    console.log('Fetched', newItems.length, 'new items from', feedUrl, 
+      `(found ${allFeedItems.length} total items, ${itemsNewerThanExisting.length} newer than existing, ${itemsNewerThanExisting.length - newItems.length} were duplicates, limited to 5)`);
 
     return {
-      items: feedItems,
+      items: newItems,
       feedTitle: feedTitle
     };
   } catch (error) {

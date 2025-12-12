@@ -271,6 +271,33 @@ app.post('/api/rss-proxy', requireAuth, async (req, res) => {
 
     console.log('[RSS-PROXY] Parsed feed:', feed.title, '- Items:', feed.items?.length || 0);
 
+    // Helper function to parse dates from various RSS/Atom formats
+    const parseDate = (item) => {
+      // Try multiple date fields in order of preference
+      const dateFields = [
+        item.pubDate,
+        item.isoDate,
+        item.published,
+        item.updated,
+        item.date,
+      ];
+      
+      for (const dateStr of dateFields) {
+        if (!dateStr) continue;
+        
+        // Try parsing the date
+        const parsed = new Date(dateStr);
+        if (!isNaN(parsed.getTime())) {
+          return parsed.toISOString();
+        }
+      }
+      
+      // If no valid date found, return null (don't default to "now")
+      // The frontend will handle this appropriately
+      console.warn('[RSS-PROXY] No valid date found for item:', item.title || item.link);
+      return null;
+    };
+
     // Format the response similar to rss2json.com for compatibility
     const response = {
       status: 'ok',
@@ -284,7 +311,7 @@ app.post('/api/rss-proxy', requireAuth, async (req, res) => {
         title: item.title || 'Untitled',
         link: item.link || '',
         guid: item.guid || item.id || item.link || '',
-        pubDate: item.pubDate || item.isoDate || new Date().toISOString(),
+        pubDate: parseDate(item),
         description: item.contentSnippet || item.summary || '',
         content: item.contentEncoded || item.content || item['content:encoded'] || item.description || '',
         contentSnippet: item.contentSnippet || (item.content ? item.content.replace(/<[^>]*>/g, '').substring(0, 500) : ''),

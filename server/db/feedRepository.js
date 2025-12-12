@@ -181,15 +181,18 @@ export async function updateFeedName(feedId, displayName) {
     throw error;
   }
 
-  // Update all items that belong to this feed to use the new display name as source
-  const { error: itemsError } = await supabase
-    .from('feed_items')
-    .update({ source: displayName })
-    .eq('feed_id', feedId);
+  // Update all items that belong to this feed to use the rssTitle as source (not display name)
+  // Items should always use rssTitle for matching, display name is only for UI
+  if (currentFeed.rss_title) {
+    const { error: itemsError } = await supabase
+      .from('feed_items')
+      .update({ source: currentFeed.rss_title })
+      .eq('feed_id', feedId);
 
-  if (itemsError) {
-    console.error('[DB] Error updating feed items source:', itemsError);
-    // Don't throw - feed was updated successfully, items update is secondary
+    if (itemsError) {
+      console.error('[DB] Error updating feed items source:', itemsError);
+      // Don't throw - feed was updated successfully, items update is secondary
+    }
   }
 
   return {
@@ -222,6 +225,18 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
   if (error) {
     console.error('[DB] Error updating feed RSS title:', error);
     throw error;
+  }
+
+  // Update all items for this feed to use the rssTitle as source
+  // This ensures items can be correctly matched after RSS title changes
+  const { error: itemsError } = await supabase
+    .from('feed_items')
+    .update({ source: rssTitle })
+    .eq('feed_id', feedId);
+
+  if (itemsError) {
+    console.error('[DB] Error updating feed items source with rssTitle:', itemsError);
+    // Don't throw - feed was updated successfully, items update is secondary
   }
 
   return {

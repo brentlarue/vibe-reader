@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { Theme } from '../types';
+import { storage } from '../utils/storage';
 
 const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'yc' }[] = [
   { value: 'light', label: 'Light', icon: 'sun' },
@@ -39,6 +40,66 @@ export default function SettingsMenu() {
       console.error('Logout error:', error);
       // Still redirect to login even if logout request fails
       window.location.href = '/login';
+    }
+  };
+
+  const handleCullTheHerd = async () => {
+    if (!confirm('This will delete all inbox items except the 5 most recent from each feed. Items in Later, Bookmarks, and Archive will not be affected. Continue?')) {
+      return;
+    }
+
+    try {
+      // Get all feeds
+      const feeds = await storage.getFeeds();
+      const allItems = await storage.getFeedItems();
+      
+      let totalDeleted = 0;
+
+      // For each feed, cull inbox items to keep only top 5
+      for (const feed of feeds) {
+        // Get inbox items for this feed (match by feedId if available, otherwise by source/rssTitle)
+        const feedInboxItems = allItems.filter(item => {
+          if (item.status !== 'inbox') return false;
+          // Prefer feedId matching (more reliable)
+          if (item.feedId && feed.id) {
+            return item.feedId === feed.id;
+          }
+          // Fallback to source matching
+          return item.source === feed.rssTitle || item.source === feed.name;
+        });
+
+        if (feedInboxItems.length <= 5) {
+          continue; // Already 5 or fewer, skip
+        }
+
+        // Sort by publishedAt descending (newest first)
+        const sorted = [...feedInboxItems].sort((a, b) => {
+          const dateA = new Date(a.publishedAt).getTime();
+          const dateB = new Date(b.publishedAt).getTime();
+          return dateB - dateA;
+        });
+
+        // Keep top 5, delete the rest
+        const toDelete = sorted.slice(5);
+        
+        for (const item of toDelete) {
+          try {
+            await storage.removeFeedItem(item.id);
+            totalDeleted++;
+          } catch (error) {
+            console.error(`Error deleting item ${item.id}:`, error);
+          }
+        }
+      }
+
+      // Trigger refresh of feed lists
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      
+      alert(`Culled ${totalDeleted} inbox item${totalDeleted !== 1 ? 's' : ''}. Kept the 5 most recent from each feed.`);
+      setIsOpen(false);
+    } catch (error) {
+      console.error('Error culling the herd:', error);
+      alert('Error culling items. Please try again.');
     }
   };
 
@@ -137,6 +198,25 @@ export default function SettingsMenu() {
               ))}
             </div>
           </div>
+
+          {/* Cull the herd */}
+          <button
+            onClick={handleCullTheHerd}
+            className="w-full text-left px-2 py-2.5 text-sm transition-colors"
+            style={{
+              color: 'var(--theme-text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span>Cull the herd</span>
+          </button>
 
           {/* Log out */}
           <button
