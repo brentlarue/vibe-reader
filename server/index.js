@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
@@ -8,15 +7,16 @@ import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
 
-// Supabase repository (database layer)
-import { isSupabaseConfigured } from './db/supabaseClient.js';
-import * as feedRepo from './db/feedRepository.js';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Load environment variables from .env in project root
+// Load environment variables FIRST (before any modules that need them)
+import dotenv from 'dotenv';
 dotenv.config({ path: join(__dirname, '..', '.env') });
+
+// Now import Supabase (which needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+const { isSupabaseConfigured } = await import('./db/supabaseClient.js');
+const feedRepo = await import('./db/feedRepository.js');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
