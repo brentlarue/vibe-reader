@@ -290,12 +290,14 @@ export default function FeedList({ status, selectedFeedId, feeds }: FeedListProp
           </div>
         </div>
       </div>
-      {items.map((item) => (
+      {items.map((item, index) => (
         <FeedItemCard
           key={item.id}
           item={item}
           onStatusChange={handleStatusChange}
           scrollKey={scrollKey}
+          allItemIds={items.map(i => i.id)}
+          itemIndex={index}
         />
       ))}
     </div>

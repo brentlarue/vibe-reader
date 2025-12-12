@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FeedItem } from '../types';
 import { storage } from '../utils/storage';
@@ -6,12 +6,22 @@ import { summarizeItem } from '../services/aiSummarizer';
 import { generateAIFeature, AIFeatureType } from '../services/aiFeatures';
 import ArticleActionBar from './ArticleActionBar';
 
+// Session storage key for navigation context
+const NAV_CONTEXT_KEY = 'articleNavContext';
+
+interface NavContext {
+  itemIds: string[];
+  currentIndex: number;
+  returnPath: string;
+}
+
 export default function ArticleReader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [item, setItem] = useState<FeedItem | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const summaryGenerationInProgress = useRef<string | null>(null);
+  const [navContext, setNavContext] = useState<NavContext | null>(null);
   
   // State for AI features
   const [generatingFeature, setGeneratingFeature] = useState<AIFeatureType | null>(null);
@@ -24,6 +34,44 @@ export default function ArticleReader() {
     'investor-analysis': null,
     'founder-implications': null,
   });
+
+  // Load navigation context from sessionStorage
+  useEffect(() => {
+    const stored = sessionStorage.getItem(NAV_CONTEXT_KEY);
+    if (stored) {
+      try {
+        const context = JSON.parse(stored) as NavContext;
+        setNavContext(context);
+      } catch (e) {
+        console.error('Failed to parse nav context:', e);
+      }
+    }
+  }, []);
+
+  // Navigate to next item in the list
+  const navigateToNext = useCallback(() => {
+    if (!navContext || !item) {
+      // No context, just go back
+      navigate(-1);
+      return;
+    }
+
+    const currentIdx = navContext.itemIds.findIndex(itemId => 
+      itemId === item.id || itemId === item.url
+    );
+    
+    if (currentIdx === -1 || currentIdx >= navContext.itemIds.length - 1) {
+      // No next item, return to list
+      navigate(navContext.returnPath);
+    } else {
+      // Navigate to next item
+      const nextId = navContext.itemIds[currentIdx + 1];
+      // Update context with new index
+      const newContext = { ...navContext, currentIndex: currentIdx + 1 };
+      sessionStorage.setItem(NAV_CONTEXT_KEY, JSON.stringify(newContext));
+      navigate(`/article/${encodeURIComponent(nextId)}`);
+    }
+  }, [navContext, item, navigate]);
 
   useEffect(() => {
     if (!id) return;
@@ -113,6 +161,8 @@ export default function ArticleReader() {
       setItem({ ...item, status: newStatus });
       // Trigger event for other components to update
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      // Navigate to next item after action
+      navigateToNext();
     } catch (error) {
       console.error('Error updating item status:', error);
     }
@@ -121,10 +171,10 @@ export default function ArticleReader() {
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this item?')) {
       await storage.removeFeedItem(item.id);
-      // Navigate back after deletion
-      navigate(-1);
       // Trigger event for other components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      // Navigate to next item after deletion
+      navigateToNext();
     }
   };
 

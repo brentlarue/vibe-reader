@@ -1,15 +1,21 @@
 import { FeedItem } from '../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { storage } from '../utils/storage';
+
+// Session storage key for navigation context
+const NAV_CONTEXT_KEY = 'articleNavContext';
 
 interface FeedItemCardProps {
   item: FeedItem;
   onStatusChange: () => void;
   scrollKey: string;
+  allItemIds?: string[];  // List of all item IDs in current view
+  itemIndex?: number;     // Index of this item in the list
 }
 
-export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedItemCardProps) {
+export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex }: FeedItemCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
@@ -57,6 +63,16 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey }: FeedIt
     const scrollContainer = findScrollContainer();
     if (scrollContainer) {
       sessionStorage.setItem(scrollKey, scrollContainer.scrollTop.toString());
+    }
+
+    // Store navigation context for "proceed to next" functionality
+    if (allItemIds && allItemIds.length > 0) {
+      const navContext = {
+        itemIds: allItemIds,
+        currentIndex: itemIndex ?? 0,
+        returnPath: location.pathname,
+      };
+      sessionStorage.setItem(NAV_CONTEXT_KEY, JSON.stringify(navContext));
     }
 
     // Encode the ID if it contains special characters (e.g., if it's a URL)
