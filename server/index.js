@@ -21,8 +21,8 @@ const { getAppEnv } = await import('./db/env.js');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-// Check if we're in production (Railway/Render set NODE_ENV automatically)
-const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT || process.env.RENDER;
+// Check if we're in production (Render sets NODE_ENV automatically)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
 
 // Authentication constants - must be set in environment variables
 const APP_PASSWORD = process.env.APP_PASSWORD;
