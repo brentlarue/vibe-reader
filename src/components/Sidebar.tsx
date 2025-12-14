@@ -604,7 +604,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
                         {feed.name}
                       </span>
                       <div className="flex items-center gap-1 flex-shrink-0 absolute right-0">
-                        {feedInboxCounts[feed.id] !== undefined && (
+                        {feedInboxCounts[feed.id] !== undefined && feedInboxCounts[feed.id] > 0 && (
                           <span 
                             className="text-xs group-hover:hidden whitespace-nowrap"
                             style={{ color: 'var(--theme-text-muted)', cursor: 'pointer' }}
