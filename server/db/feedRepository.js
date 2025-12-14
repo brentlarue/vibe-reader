@@ -806,9 +806,10 @@ export async function setPreference(key, value) {
 
   const env = getAppEnv();
 
+  // Try using column names for onConflict (Supabase prefers this)
   const { error } = await supabase
     .from('preferences')
-    .upsert({ key, value, env }, { onConflict: 'preferences_key_env_unique' });
+    .upsert({ key, value, env }, { onConflict: 'key,env' });
 
   if (error) {
     console.error('[DB] Error setting preference:', error);
@@ -835,16 +836,20 @@ export async function updatePreferences(updates) {
   }));
 
   console.log(`[DB] Updating preferences for env=${env}:`, Object.keys(updates));
+  console.log(`[DB] Upsert data:`, JSON.stringify(upserts, null, 2));
 
-  const { error } = await supabase
+  // Try using column names for onConflict (Supabase prefers this)
+  const { error, data } = await supabase
     .from('preferences')
-    .upsert(upserts, { onConflict: 'preferences_key_env_unique' });
+    .upsert(upserts, { onConflict: 'key,env' });
 
   if (error) {
     console.error('[DB] Error updating preferences:', error);
+    console.error('[DB] Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
   console.log(`[DB] Successfully updated preferences for env=${env}:`, Object.keys(updates));
+  console.log(`[DB] Upsert result:`, data);
 }
 
 // ============================================================================

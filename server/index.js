@@ -1185,7 +1185,13 @@ app.post('/api/preferences', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error saving preferences:', error);
-    res.status(500).json({ error: 'Failed to save preferences' });
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to save preferences',
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
