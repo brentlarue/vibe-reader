@@ -1,8 +1,6 @@
 import { useState, FormEvent, useMemo } from 'react';
-import { useTheme } from '../contexts/ThemeContext';
 
 export default function LoginPage() {
-  const { theme } = useTheme();
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
