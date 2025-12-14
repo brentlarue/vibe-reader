@@ -13,7 +13,16 @@ interface FeedListProps {
   onRefresh?: () => Promise<void>;
 }
 
-type SortOrder = 'newest' | 'oldest';
+type SortOrder = 'newest' | 'oldest' | 'longest' | 'shortest';
+
+// Helper function to calculate word count from article content
+const getWordCount = (item: FeedItem): number => {
+  const content = item.fullContent || item.contentSnippet || '';
+  // Strip HTML tags and get plain text
+  const text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  // Count words (split by whitespace and filter out empty strings)
+  return text.split(/\s+/).filter(word => word.length > 0).length;
+};
 
 export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: FeedListProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -36,11 +45,19 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
       }
     }
     
-    // Sort items by published date
+    // Sort items based on sort order
     filtered.sort((a, b) => {
-      const dateA = new Date(a.publishedAt).getTime();
-      const dateB = new Date(b.publishedAt).getTime();
-      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+      if (sortOrder === 'newest' || sortOrder === 'oldest') {
+        // Sort by published date
+        const dateA = new Date(a.publishedAt).getTime();
+        const dateB = new Date(b.publishedAt).getTime();
+        return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+      } else {
+        // Sort by word count
+        const wordCountA = getWordCount(a);
+        const wordCountB = getWordCount(b);
+        return sortOrder === 'longest' ? wordCountB - wordCountA : wordCountA - wordCountB;
+      }
     });
     
     setItems(filtered);
@@ -254,6 +271,8 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
             >
               <option value="newest" style={{ backgroundColor: 'var(--theme-card-bg)', color: 'var(--theme-text)' }}>Newest first</option>
               <option value="oldest" style={{ backgroundColor: 'var(--theme-card-bg)', color: 'var(--theme-text)' }}>Oldest first</option>
+              <option value="longest" style={{ backgroundColor: 'var(--theme-card-bg)', color: 'var(--theme-text)' }}>Longest first</option>
+              <option value="shortest" style={{ backgroundColor: 'var(--theme-card-bg)', color: 'var(--theme-text)' }}>Shortest first</option>
             </select>
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
               <svg className="w-4 h-4" style={{ color: 'var(--theme-text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
