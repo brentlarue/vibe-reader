@@ -536,7 +536,7 @@ export default function ArticleReader() {
       }
 
       // Check if selection is within the article content
-      if (!articleContentRef.current.contains(range.commonAncestorContainer)) {
+      if (!articleContentRef.current || !articleContentRef.current.contains(range.commonAncestorContainer)) {
         setSelectedText(null);
         setHighlightBoxPosition(null);
         return;
