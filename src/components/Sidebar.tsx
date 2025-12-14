@@ -20,6 +20,12 @@ interface SidebarProps {
 export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefreshFeeds, onFeedSelect, onToggle, onCloseMobileDrawer, isMobileDrawerOpen }: SidebarProps) {
   const location = useLocation();
   const { theme } = useTheme();
+  
+  // Detect if we're in dev environment (localhost or dev domain)
+  const isDev = useMemo(() => {
+    const hostname = window.location.hostname;
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
+  }, []);
   const [feedUrl, setFeedUrl] = useState('');
   const [isAddingFeed, setIsAddingFeed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -249,12 +255,12 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
   return (
     <div 
-      className="w-64 lg:w-64 border-r flex flex-col relative bg-white lg:bg-transparent flex-shrink-0"
+      className="border-r flex flex-col relative bg-white lg:bg-transparent flex-shrink-0"
       style={{ 
         backgroundColor: 'var(--theme-card-bg)', 
         borderColor: 'var(--theme-border)',
         color: 'var(--theme-text)',
-        width: '16rem',
+        width: '17rem', // Consistent width for both dev and prod
         maxWidth: '85vw',
         height: '100dvh', // Use dynamic viewport height for iOS
         minHeight: '-webkit-fill-available', // Fallback for older iOS
@@ -294,10 +300,22 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
               }
             }, 0);
           }}
-          className="text-xl sm:text-2xl font-semibold tracking-tight cursor-pointer flex-1 min-w-0"
+          className="text-xl sm:text-2xl font-semibold tracking-tight cursor-pointer flex items-center gap-2 flex-1 min-w-0 whitespace-nowrap"
           style={{ color: 'var(--theme-text)' }}
         >
-          The Signal
+          <span className="flex-shrink-0">The Signal</span>
+          {isDev && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--theme-button-bg)',
+                color: 'var(--theme-button-text)',
+                lineHeight: '1.2',
+              }}
+            >
+              Dev
+            </span>
+          )}
         </Link>
         {/* Mobile sidebar close button - visible when drawer is open */}
         {isMobileDrawerOpen && (

@@ -1,11 +1,19 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useMemo } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function LoginPage() {
+  const { theme } = useTheme();
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Detect if we're in dev environment (localhost or dev domain)
+  const isDev = useMemo(() => {
+    const hostname = window.location.hostname;
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -61,10 +69,22 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8">
         <div>
           <h1
-            className="text-2xl font-semibold tracking-tight"
+            className="text-2xl font-semibold tracking-tight flex items-center gap-2 whitespace-nowrap"
             style={{ color: 'var(--theme-text)' }}
           >
-            The Signal
+            <span>The Signal</span>
+            {isDev && (
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded"
+                style={{
+                  backgroundColor: 'var(--theme-button-bg)',
+                  color: 'var(--theme-button-text)',
+                  lineHeight: '1.2',
+                }}
+              >
+                Dev
+              </span>
+            )}
           </h1>
         </div>
 
