@@ -278,6 +278,22 @@ export default function ArticleReader() {
     return null;
   }
 
+  const formatBookmarkedDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'pm' : 'am';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const hoursStr = String(hours);
+    
+    return `Bookmarked at ${day}.${month}.${year} at ${hoursStr}:${minutes} ${ampm}`;
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -738,6 +754,15 @@ export default function ArticleReader() {
           >
             {item.title}
           </h1>
+
+          {item.status === 'bookmarked' && item.updatedAt && (
+            <p 
+              className="text-base italic mb-4 sm:mb-6"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              {formatBookmarkedDate(item.updatedAt)}
+            </p>
+          )}
 
           {isGeneratingSummary ? (
             <div 

@@ -879,6 +879,7 @@ function transformFeedItem(dbItem) {
     aiFounderImplications: dbItem.ai_founder_implications,
     status: dbItem.status,
     paywallStatus: dbItem.paywall_status,
+    updatedAt: dbItem.updated_at,
   };
 }
 

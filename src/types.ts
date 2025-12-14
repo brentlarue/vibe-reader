@@ -19,6 +19,7 @@ export interface FeedItem {
   aiFounderImplications?: string;
   status: FeedItemStatus;
   fullContent?: string;
+  updatedAt?: string; // Timestamp when item was last updated
 }
 
 export interface Feed {
