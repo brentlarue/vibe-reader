@@ -291,7 +291,7 @@ export default function ArticleReader() {
     hours = hours ? hours : 12; // the hour '0' should be '12'
     const hoursStr = String(hours);
     
-    return `Bookmarked at ${day}.${month}.${year} at ${hoursStr}:${minutes} ${ampm}`;
+    return `Bookmarked on ${day}.${month}.${year} at ${hoursStr}:${minutes} ${ampm}`;
   };
 
   const formatDate = (dateString: string) => {
