@@ -263,6 +263,9 @@ function App() {
       console.log('Saving last refresh time:', timestamp);
       await preferences.setLastFeedRefresh(timestamp);
       console.log('Successfully saved last refresh time');
+      
+      // Dispatch event specifically for refresh time update (after save completes)
+      window.dispatchEvent(new CustomEvent('lastRefreshTimeUpdated'));
     } catch (error) {
       console.error('Failed to save last refresh time:', error);
     }

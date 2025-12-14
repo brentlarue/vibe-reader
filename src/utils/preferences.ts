@@ -129,10 +129,32 @@ export const preferences = {
 
   /**
    * Get last feed refresh time
+   * Forces a fresh fetch from server to ensure we get the latest value
    */
   getLastFeedRefresh: async (): Promise<string | null> => {
-    const prefs = await preferences.get();
-    return prefs.lastFeedRefresh || null;
+    try {
+      // Force a fresh fetch from server (bypass cache)
+      const response = await apiFetch('/api/preferences', {
+        method: 'GET',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const prefs = await response.json() as Preferences;
+      // Update cache with fresh data
+      saveToLocalStorage(PREFERENCES_KEY, prefs);
+      return prefs.lastFeedRefresh || null;
+    } catch (error: unknown) {
+      // Fallback to cached localStorage if server fetch fails
+      const err = error as { suppressWarning?: boolean; isUnauthorized?: boolean };
+      if (!err?.suppressWarning && !err?.isUnauthorized) {
+        console.warn('Failed to fetch last refresh time from API, using cache:', error);
+      }
+      const cached = fallbackToLocalStorage<Preferences>(PREFERENCES_KEY, {});
+      return cached.lastFeedRefresh || null;
+    }
   },
 
   /**

@@ -32,14 +32,45 @@ export default function SettingsMenu() {
     }
   }, [isOpen]);
 
+  // Format date as dd.mm.yy, hh:mm (24-hour format)
+  const formatRefreshTime = useCallback((isoString: string): string => {
+    const date = new Date(isoString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${day}.${month}.${year}, ${hours}:${minutes}`;
+  }, []);
+
   // Load and update last refresh time
   const loadLastRefreshTime = useCallback(async () => {
     try {
+      // First check localStorage for immediate update (preferences.set() updates it first)
+      const cachedPrefs = localStorage.getItem('vibe-reader-preferences');
+      if (cachedPrefs) {
+        try {
+          const parsed = JSON.parse(cachedPrefs);
+          if (parsed.lastFeedRefresh) {
+            setLastRefreshTime(parsed.lastFeedRefresh);
+            // Still fetch from server to ensure we have the latest, but show cached immediately
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      // Then fetch from server to get the authoritative value
       const stored = await preferences.getLastFeedRefresh();
-      setLastRefreshTime(stored);
+      if (stored) {
+        setLastRefreshTime(stored);
+      } else if (!cachedPrefs) {
+        // Only clear if we have no cached value either
+        setLastRefreshTime(null);
+      }
     } catch (error) {
       console.error('Failed to load last refresh time:', error);
-      setLastRefreshTime(null);
+      // Keep existing value if fetch fails
     }
   }, []);
 
@@ -48,12 +79,24 @@ export default function SettingsMenu() {
 
     // Listen for refresh events to update the time
     const handleFeedItemsUpdated = () => {
+      // Add a small delay to ensure server save has completed
+      setTimeout(() => {
+        loadLastRefreshTime();
+      }, 200);
+    };
+    
+    // Also listen for explicit refresh time update event
+    const handleLastRefreshTimeUpdated = () => {
+      // Immediate reload when refresh time is explicitly updated
       loadLastRefreshTime();
     };
+    
     window.addEventListener('feedItemsUpdated', handleFeedItemsUpdated);
+    window.addEventListener('lastRefreshTimeUpdated', handleLastRefreshTimeUpdated);
 
     return () => {
       window.removeEventListener('feedItemsUpdated', handleFeedItemsUpdated);
+      window.removeEventListener('lastRefreshTimeUpdated', handleLastRefreshTimeUpdated);
     };
   }, [loadLastRefreshTime]);
 
@@ -251,7 +294,7 @@ export default function SettingsMenu() {
                 marginTop: '2px',
               }}
             >
-              {lastRefreshTime ? new Date(lastRefreshTime).toLocaleString() : 'Never'}
+              {lastRefreshTime ? formatRefreshTime(lastRefreshTime) : 'Never'}
             </div>
           </div>
 
