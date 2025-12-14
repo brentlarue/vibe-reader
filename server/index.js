@@ -17,6 +17,7 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 // Now import Supabase (which needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
 const { isSupabaseConfigured } = await import('./db/supabaseClient.js');
 const feedRepo = await import('./db/feedRepository.js');
+const { getAppEnv } = await import('./db/env.js');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -107,6 +108,14 @@ function verifySession(token, secret) {
   }
 }
 
+// Environment logging middleware - adds env header and logs
+function envMiddleware(req, res, next) {
+  const env = getAppEnv();
+  res.setHeader('x-app-env', env);
+  console.log(`[ENV=${env}] ${req.method} ${req.path}`);
+  next();
+}
+
 // Authentication middleware - requires valid session cookie
 function requireAuth(req, res, next) {
   console.log('[AUTH] requireAuth called for:', req.method, req.path);
@@ -129,6 +138,9 @@ function requireAuth(req, res, next) {
 }
 
 // Middleware
+// Apply env middleware to all routes
+app.use(envMiddleware);
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests) or localhost
@@ -900,7 +912,11 @@ app.post('/api/feeds/:feedId/items', requireAuth, async (req, res) => {
     res.json({ success: true, count: items.length });
   } catch (error) {
     console.error('Error upserting feed items:', error);
-    res.status(500).json({ error: 'Failed to upsert feed items' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ 
+      error: 'Failed to upsert feed items',
+      details: errorMessage 
+    });
   }
 });
 

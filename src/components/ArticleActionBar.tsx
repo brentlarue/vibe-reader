@@ -84,7 +84,7 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
     if (item.status === 'archived') {
       onStatusChange('inbox');
     } else {
-      onStatusChange('archived');
+    onStatusChange('archived');
     }
   };
 

@@ -3,9 +3,13 @@
  * 
  * Data access layer for feeds and feed items using Supabase.
  * All functions return plain JS objects suitable for the frontend.
+ * 
+ * All operations are scoped by environment (env column) to ensure
+ * strict dev/prod data isolation.
  */
 
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
+import { getAppEnv } from './env.js';
 
 // ============================================================================
 // FEEDS
@@ -20,8 +24,7 @@ export async function getFeeds() {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   const { data, error } = await supabase
     .from('feeds')
@@ -54,10 +57,13 @@ export async function getFeed(feedId) {
     throw new Error('Supabase not configured');
   }
 
+  const env = getAppEnv();
+
   const { data, error } = await supabase
     .from('feeds')
     .select('*')
     .eq('id', feedId)
+    .eq('env', env)
     .single();
 
   if (error) {
@@ -87,8 +93,7 @@ export async function getFeedByUrl(url) {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   const { data, error } = await supabase
     .from('feeds')
@@ -128,8 +133,7 @@ export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   const { data, error } = await supabase
     .from('feeds')
@@ -168,11 +172,15 @@ export async function updateFeedName(feedId, displayName) {
     throw new Error('Supabase not configured');
   }
 
+  const env = getAppEnv();
+
   // First, get the current feed to know its rssTitle for matching items
+  // Must scope by env to ensure we only update feeds in current environment
   const { data: currentFeed, error: fetchError } = await supabase
     .from('feeds')
     .select('rss_title')
     .eq('id', feedId)
+    .eq('env', env)
     .single();
 
   if (fetchError) {
@@ -180,11 +188,12 @@ export async function updateFeedName(feedId, displayName) {
     throw fetchError;
   }
 
-  // Update the feed's display name
+  // Update the feed's display name (scoped by env)
   const { data, error } = await supabase
     .from('feeds')
     .update({ display_name: displayName })
     .eq('id', feedId)
+    .eq('env', env)
     .select()
     .single();
 
@@ -196,8 +205,6 @@ export async function updateFeedName(feedId, displayName) {
   // Update all items that belong to this feed to use the rssTitle as source (not display name)
   // Items should always use rssTitle for matching, display name is only for UI
   if (currentFeed.rss_title) {
-    // Get environment (default to 'prod' if not set)
-    const env = process.env.APP_ENV || 'prod';
     const { error: itemsError } = await supabase
       .from('feed_items')
       .update({ source: currentFeed.rss_title })
@@ -230,10 +237,14 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
     throw new Error('Supabase not configured');
   }
 
+  const env = getAppEnv();
+
+  // Update feed (scoped by env)
   const { data, error } = await supabase
     .from('feeds')
     .update({ rss_title: rssTitle })
     .eq('id', feedId)
+    .eq('env', env)
     .select()
     .single();
 
@@ -244,8 +255,6 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
 
   // Update all items for this feed to use the rssTitle as source
   // This ensures items can be correctly matched after RSS title changes
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
   const { error: itemsError } = await supabase
     .from('feed_items')
     .update({ source: rssTitle })
@@ -276,11 +285,15 @@ export async function deleteFeed(feedId) {
     throw new Error('Supabase not configured');
   }
 
+  const env = getAppEnv();
+
   // Items are automatically deleted due to ON DELETE CASCADE
+  // Must scope by env to ensure we only delete feeds in current environment
   const { error } = await supabase
     .from('feeds')
     .delete()
-    .eq('id', feedId);
+    .eq('id', feedId)
+    .eq('env', env);
 
   if (error) {
     console.error('[DB] Error deleting feed:', error);
@@ -305,8 +318,7 @@ export async function getFeedItems({ status, feedId, limit } = {}) {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   let query = supabase
     .from('feed_items')
@@ -347,8 +359,7 @@ export async function getFeedItem(itemId) {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   // First try by UUID id
   let { data, error } = await supabase
@@ -412,8 +423,7 @@ export async function upsertFeedItems(feedId, items) {
     return [];
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   // Transform items for database
   const dbItems = items.map(item => ({
@@ -432,17 +442,41 @@ export async function upsertFeedItems(feedId, items) {
     env,
   }));
 
+  // Verify the feed exists in the current environment before upserting items
+  // This prevents foreign key constraint violations
+  const { data: feedCheck, error: feedCheckError } = await supabase
+    .from('feeds')
+    .select('id')
+    .eq('id', feedId)
+    .eq('env', env)
+    .single();
+
+  if (feedCheckError || !feedCheck) {
+    const errorMsg = `Feed ${feedId} not found in ${env} environment`;
+    console.error(`[DB] ${errorMsg}`, feedCheckError);
+    throw new Error(errorMsg);
+  }
+
   // Use upsert with ON CONFLICT on (feed_id, url, env)
+  // Supabase PostgREST requires column names with spaces: 'col1, col2, col3'
   const { data, error } = await supabase
     .from('feed_items')
     .upsert(dbItems, {
-      onConflict: 'feed_items_feed_id_url_env_unique',
+      onConflict: 'feed_id, url, env',
       ignoreDuplicates: false,
     })
     .select();
 
   if (error) {
     console.error('[DB] Error upserting feed items:', error);
+    console.error('[DB] Feed ID:', feedId, 'Environment:', env);
+    console.error('[DB] Items count:', dbItems.length);
+    console.error('[DB] First item sample:', dbItems[0] ? {
+      feed_id: dbItems[0].feed_id,
+      url: dbItems[0].url,
+      env: dbItems[0].env,
+    } : 'no items');
+    console.error('[DB] Full error details:', JSON.stringify(error, null, 2));
     throw error;
   }
 
@@ -465,16 +499,20 @@ export async function updateFeedItemStatus(itemId, status) {
     throw new Error(`Invalid status: ${status}`);
   }
 
-  // First, find the item to get its UUID
+  // First, find the item to get its UUID (already env-scoped)
   const item = await getFeedItem(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const env = getAppEnv();
+
+  // Update must be scoped by both id and env to prevent cross-env modifications
   const { data, error } = await supabase
     .from('feed_items')
     .update({ status })
     .eq('id', item.id)
+    .eq('env', env)
     .select()
     .single();
 
@@ -497,16 +535,20 @@ export async function updateFeedItemSummary(itemId, summary) {
     throw new Error('Supabase not configured');
   }
 
-  // First, find the item to get its UUID
+  // First, find the item to get its UUID (already env-scoped)
   const item = await getFeedItem(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const env = getAppEnv();
+
+  // Update must be scoped by both id and env to prevent cross-env modifications
   const { data, error } = await supabase
     .from('feed_items')
     .update({ ai_summary: summary })
     .eq('id', item.id)
+    .eq('env', env)
     .select()
     .single();
 
@@ -542,16 +584,20 @@ export async function updateFeedItemAIFeature(itemId, featureType, content) {
     throw new Error(`Invalid feature type: ${featureType}`);
   }
 
-  // First, find the item to get its UUID
+  // First, find the item to get its UUID (already env-scoped)
   const item = await getFeedItem(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const env = getAppEnv();
+
+  // Update must be scoped by both id and env to prevent cross-env modifications
   const { data, error } = await supabase
     .from('feed_items')
     .update({ [column]: content })
     .eq('id', item.id)
+    .eq('env', env)
     .select()
     .single();
 
@@ -579,16 +625,20 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
     throw new Error(`Invalid paywall status: ${paywallStatus}`);
   }
 
-  // First, find the item to get its UUID
+  // First, find the item to get its UUID (already env-scoped)
   const item = await getFeedItem(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const env = getAppEnv();
+
+  // Update must be scoped by both id and env to prevent cross-env modifications
   const { data, error } = await supabase
     .from('feed_items')
     .update({ paywall_status: paywallStatus })
     .eq('id', item.id)
+    .eq('env', env)
     .select()
     .single();
 
@@ -612,13 +662,15 @@ export async function reassociateFeedItem(itemId, feedId, source) {
     throw new Error('Supabase not configured');
   }
 
-  // First, find the item to get its UUID
+  // First, find the item to get its UUID (already env-scoped)
   const item = await getFeedItem(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
-  // Update the item's feed_id and source
+  const env = getAppEnv();
+
+  // Update must be scoped by both id and env to prevent cross-env modifications
   const { data, error } = await supabase
     .from('feed_items')
     .update({ 
@@ -626,6 +678,7 @@ export async function reassociateFeedItem(itemId, feedId, source) {
       source: source
     })
     .eq('id', item.id)
+    .eq('env', env)
     .select()
     .single();
 
@@ -647,16 +700,20 @@ export async function deleteFeedItem(itemId) {
     throw new Error('Supabase not configured');
   }
 
-  // First, find the item to get its UUID
+  // First, find the item to get its UUID (already env-scoped)
   const item = await getFeedItem(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const env = getAppEnv();
+
+  // Delete must be scoped by both id and env to prevent cross-env deletions
   const { error } = await supabase
     .from('feed_items')
     .delete()
-    .eq('id', item.id);
+    .eq('id', item.id)
+    .eq('env', env);
 
   if (error) {
     console.error('[DB] Error deleting feed item:', error);
@@ -674,10 +731,14 @@ export async function deleteFeedItemsByStatus(status) {
     throw new Error('Supabase not configured');
   }
 
+  const env = getAppEnv();
+
+  // Delete must be scoped by env to prevent cross-env deletions
   const { data, error } = await supabase
     .from('feed_items')
     .delete()
     .eq('status', status)
+    .eq('env', env)
     .select();
 
   if (error) {
@@ -701,8 +762,7 @@ export async function getPreferences() {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   const { data, error } = await supabase
     .from('preferences')
@@ -734,8 +794,7 @@ export async function setPreference(key, value) {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   const { error } = await supabase
     .from('preferences')
@@ -757,8 +816,7 @@ export async function updatePreferences(updates) {
     throw new Error('Supabase not configured');
   }
 
-  // Get environment (default to 'prod' if not set)
-  const env = process.env.APP_ENV || 'prod';
+  const env = getAppEnv();
 
   const upserts = Object.entries(updates).map(([key, value]) => ({
     key,
@@ -766,7 +824,6 @@ export async function updatePreferences(updates) {
     env,
   }));
 
-  console.log('[DB] Updating preferences:', upserts);
   const { error } = await supabase
     .from('preferences')
     .upsert(upserts, { onConflict: 'preferences_key_env_unique' });
@@ -819,11 +876,14 @@ export async function feedItemExistsByUrl(feedId, url) {
     throw new Error('Supabase not configured');
   }
 
+  const env = getAppEnv();
+
   const { count, error } = await supabase
     .from('feed_items')
     .select('id', { count: 'exact', head: true })
     .eq('feed_id', feedId)
-    .eq('url', url);
+    .eq('url', url)
+    .eq('env', env);
 
   if (error) {
     console.error('[DB] Error checking feed item existence:', error);
