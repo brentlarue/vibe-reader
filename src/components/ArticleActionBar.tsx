@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { FeedItem } from '../types';
+import Toast from './Toast';
+import ShareModal from './ShareModal';
 
 interface ArticleActionBarProps {
   item: FeedItem;
@@ -7,7 +10,57 @@ interface ArticleActionBarProps {
   showBottomBorder?: boolean;
 }
 
+// Detect iOS
+const isIOS = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
 export default function ArticleActionBar({ item, onStatusChange, onDelete, showBottomBorder = false }: ArticleActionBarProps) {
+  const [showToast, setShowToast] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setShowToast(true);
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = item.url;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setShowToast(true);
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  const handleShare = async () => {
+    if (isIOS() && navigator.share) {
+      try {
+        await navigator.share({
+          title: item.title,
+          url: item.url,
+        });
+      } catch (error) {
+        // User cancelled or error occurred
+        if ((error as Error).name !== 'AbortError') {
+          console.error('Error sharing:', error);
+        }
+      }
+    } else {
+      // Open share modal for web
+      setShowShareModal(true);
+    }
+  };
   const handleLaterClick = () => {
     // Toggle between saved and inbox
     if (item.status === 'saved') {
@@ -116,6 +169,46 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
         </button>
 
         <button
+          onClick={handleCopyLink}
+          className="transition-colors p-2 sm:p-2 rounded-md touch-manipulation"
+          style={{ color: 'var(--theme-text-muted)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text)';
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-muted)';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          title="Copy Link"
+          aria-label="Copy Link"
+        >
+          <svg className="w-6 h-6 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+        </button>
+
+        <button
+          onClick={handleShare}
+          className="transition-colors p-2 sm:p-2 rounded-md touch-manipulation"
+          style={{ color: 'var(--theme-text-muted)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text)';
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--theme-text-muted)';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          title="Share"
+          aria-label="Share"
+        >
+          <svg className="w-6 h-6 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+          </svg>
+        </button>
+
+        <button
           onClick={onDelete}
           className="transition-colors p-2 sm:p-2 rounded-md touch-manipulation"
           style={{ color: 'var(--theme-text-muted)' }}
@@ -135,6 +228,18 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
           </svg>
         </button>
       </div>
+      {showToast && (
+        <Toast
+          message="Link copied to clipboard"
+          onClose={() => setShowToast(false)}
+        />
+      )}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        url={item.url}
+        title={item.title}
+      />
     </div>
   );
 }
