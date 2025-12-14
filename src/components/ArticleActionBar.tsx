@@ -80,8 +80,12 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
   };
 
   const handleArchiveClick = () => {
-    // Always set to archived (doesn't toggle)
-    onStatusChange('archived');
+    // Toggle between archived and inbox
+    if (item.status === 'archived') {
+      onStatusChange('inbox');
+    } else {
+      onStatusChange('archived');
+    }
   };
 
   return (
@@ -97,15 +101,15 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
             color: item.status === 'saved' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
           }}
           onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
             if (item.status !== 'saved') {
               e.currentTarget.style.color = 'var(--theme-text)';
-              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
             }
           }}
           onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
             if (item.status !== 'saved') {
               e.currentTarget.style.color = 'var(--theme-text-muted)';
-              e.currentTarget.style.backgroundColor = 'transparent';
             }
           }}
           title={item.status === 'saved' ? 'Remove from Later' : 'Save for Later'}
@@ -123,15 +127,15 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
             color: item.status === 'bookmarked' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
           }}
           onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
             if (item.status !== 'bookmarked') {
               e.currentTarget.style.color = 'var(--theme-text)';
-              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
             }
           }}
           onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
             if (item.status !== 'bookmarked') {
               e.currentTarget.style.color = 'var(--theme-text-muted)';
-              e.currentTarget.style.backgroundColor = 'transparent';
             }
           }}
           title={item.status === 'bookmarked' ? 'Remove Bookmark' : 'Bookmark'}
@@ -149,19 +153,19 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, showB
             color: item.status === 'archived' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
           }}
           onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
             if (item.status !== 'archived') {
               e.currentTarget.style.color = 'var(--theme-text)';
-              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
             }
           }}
           onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
             if (item.status !== 'archived') {
               e.currentTarget.style.color = 'var(--theme-text-muted)';
-              e.currentTarget.style.backgroundColor = 'transparent';
             }
           }}
-          title="Archive"
-          aria-label="Archive"
+          title={item.status === 'archived' ? 'Remove from Archive' : 'Archive'}
+          aria-label={item.status === 'archived' ? 'Remove from Archive' : 'Archive'}
         >
           <svg className="w-6 h-6 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />

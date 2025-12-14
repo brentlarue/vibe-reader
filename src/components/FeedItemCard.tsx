@@ -31,7 +31,9 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
   const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await storage.updateItemStatus(item.id, newStatus);
+      // Toggle: if item already has this status, remove it (set to inbox)
+      const finalStatus = item.status === newStatus ? 'inbox' : newStatus;
+      await storage.updateItemStatus(item.id, finalStatus);
       onStatusChange();
       // Trigger event for other components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
