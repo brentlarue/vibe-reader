@@ -669,9 +669,13 @@ export async function getPreferences() {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   const { data, error } = await supabase
     .from('preferences')
-    .select('key, value');
+    .select('key, value')
+    .eq('env', env);
 
   if (error) {
     console.error('[DB] Error fetching preferences:', error);
@@ -698,9 +702,12 @@ export async function setPreference(key, value) {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   const { error } = await supabase
     .from('preferences')
-    .upsert({ key, value }, { onConflict: 'key' });
+    .upsert({ key, value, env }, { onConflict: 'preferences_key_env_unique' });
 
   if (error) {
     console.error('[DB] Error setting preference:', error);
@@ -718,19 +725,25 @@ export async function updatePreferences(updates) {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   const upserts = Object.entries(updates).map(([key, value]) => ({
     key,
     value,
+    env,
   }));
 
+  console.log('[DB] Updating preferences:', upserts);
   const { error } = await supabase
     .from('preferences')
-    .upsert(upserts, { onConflict: 'key' });
+    .upsert(upserts, { onConflict: 'preferences_key_env_unique' });
 
   if (error) {
     console.error('[DB] Error updating preferences:', error);
     throw error;
   }
+  console.log('[DB] Successfully updated preferences');
 }
 
 // ============================================================================

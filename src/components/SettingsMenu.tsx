@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { Theme } from '../types';
 import { storage } from '../utils/storage';
 import { itemBelongsToFeed } from '../utils/feedMatching';
+import { preferences } from '../utils/preferences';
 
 const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'yc' }[] = [
   { value: 'light', label: 'Light', icon: 'sun' },
@@ -17,6 +18,7 @@ export default function SettingsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState({ bottom: 0, left: 0, width: 0 });
+  const [lastRefreshTime, setLastRefreshTime] = useState<string | null>(null);
 
   // Calculate menu position when opening
   useEffect(() => {
@@ -29,6 +31,38 @@ export default function SettingsMenu() {
       });
     }
   }, [isOpen]);
+
+  // Load and update last refresh time
+  const loadLastRefreshTime = useCallback(async () => {
+    try {
+      const stored = await preferences.getLastFeedRefresh();
+      setLastRefreshTime(stored);
+    } catch (error) {
+      console.error('Failed to load last refresh time:', error);
+      setLastRefreshTime(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLastRefreshTime();
+
+    // Listen for refresh events to update the time
+    const handleFeedItemsUpdated = () => {
+      loadLastRefreshTime();
+    };
+    window.addEventListener('feedItemsUpdated', handleFeedItemsUpdated);
+
+    return () => {
+      window.removeEventListener('feedItemsUpdated', handleFeedItemsUpdated);
+    };
+  }, [loadLastRefreshTime]);
+
+  // Reload when menu opens
+  useEffect(() => {
+    if (isOpen) {
+      loadLastRefreshTime();
+    }
+  }, [isOpen, loadLastRefreshTime]);
 
   const handleLogout = async () => {
     try {
@@ -193,6 +227,31 @@ export default function SettingsMenu() {
                   )}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Last refreshed */}
+          <div 
+            className="px-2 py-2.5 text-sm"
+            style={{
+              borderTop: '1px solid var(--theme-border)',
+              paddingTop: '12px',
+            }}
+          >
+            <div style={{ 
+              color: 'var(--theme-text-secondary)',
+              marginBottom: '4px',
+            }}>
+              Last refreshed:
+            </div>
+            <div 
+              className="text-xs"
+              style={{ 
+                color: 'var(--theme-text-muted)',
+                marginTop: '2px',
+              }}
+            >
+              {lastRefreshTime ? new Date(lastRefreshTime).toLocaleString() : 'Never'}
             </div>
           </div>
 

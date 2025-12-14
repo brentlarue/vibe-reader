@@ -256,6 +256,17 @@ function App() {
 
     await Promise.all(fetchPromises);
     
+    // Store last refresh time on server
+    try {
+      const now = new Date();
+      const timestamp = now.toISOString();
+      console.log('Saving last refresh time:', timestamp);
+      await preferences.setLastFeedRefresh(timestamp);
+      console.log('Successfully saved last refresh time');
+    } catch (error) {
+      console.error('Failed to save last refresh time:', error);
+    }
+    
     // Trigger a refresh of FeedList components
     window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
   };

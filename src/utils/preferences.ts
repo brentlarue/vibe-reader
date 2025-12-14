@@ -6,6 +6,7 @@ import { apiFetch } from './apiFetch';
 export interface Preferences {
   theme?: 'light' | 'dark' | 'sepia' | 'hn';
   sidebarCollapsed?: boolean;
+  lastFeedRefresh?: string; // ISO string timestamp
 }
 
 // localStorage key for local cache
@@ -124,5 +125,20 @@ export const preferences = {
    */
   setSidebarCollapsed: async (collapsed: boolean): Promise<void> => {
     await preferences.set({ sidebarCollapsed: collapsed });
+  },
+
+  /**
+   * Get last feed refresh time
+   */
+  getLastFeedRefresh: async (): Promise<string | null> => {
+    const prefs = await preferences.get();
+    return prefs.lastFeedRefresh || null;
+  },
+
+  /**
+   * Set last feed refresh time
+   */
+  setLastFeedRefresh: async (timestamp: string): Promise<void> => {
+    await preferences.set({ lastFeedRefresh: timestamp });
   },
 };
