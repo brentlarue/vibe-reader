@@ -124,7 +124,7 @@ export default function NotesPage() {
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-3xl mx-auto px-6 sm:px-6 md:px-8 lg:px-12 pt-6 pb-6 sm:py-8 lg:py-12">
+      <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
         <p style={{ color: 'var(--theme-text-muted)' }}>Loading notes...</p>
       </div>
     );
@@ -132,7 +132,7 @@ export default function NotesPage() {
 
   if (error) {
     return (
-      <div className="w-full max-w-3xl mx-auto px-6 sm:px-6 md:px-8 lg:px-12 pt-6 pb-6 sm:py-8 lg:py-12">
+      <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
         <p style={{ color: '#dc2626' }}>{error}</p>
       </div>
     );
@@ -140,14 +140,14 @@ export default function NotesPage() {
 
   if (annotations.length === 0) {
     return (
-      <div className="w-full max-w-3xl mx-auto px-6 sm:px-6 md:px-8 lg:px-12 pt-6 pb-6 sm:py-8 lg:py-12">
+      <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
         <p style={{ color: 'var(--theme-text-muted)' }}>No notes or highlights yet.</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-6 sm:px-6 md:px-8 lg:px-12 pt-6 pb-6 sm:py-8 lg:py-12">
+    <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
       <h1 
         className="text-2xl sm:text-3xl font-bold mb-8 sm:mb-12"
         style={{ color: 'var(--theme-text)' }}
