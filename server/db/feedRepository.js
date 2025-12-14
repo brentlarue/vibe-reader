@@ -20,9 +20,13 @@ export async function getFeeds() {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   const { data, error } = await supabase
     .from('feeds')
     .select('*')
+    .eq('env', env)
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -83,10 +87,14 @@ export async function getFeedByUrl(url) {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   const { data, error } = await supabase
     .from('feeds')
     .select('*')
     .eq('url', url)
+    .eq('env', env)
     .single();
 
   if (error) {
@@ -120,6 +128,9 @@ export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   const { data, error } = await supabase
     .from('feeds')
     .insert({
@@ -127,6 +138,7 @@ export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss
       display_name: displayName,
       rss_title: rssTitle || null,
       source_type: sourceType,
+      env,
     })
     .select()
     .single();
@@ -184,10 +196,13 @@ export async function updateFeedName(feedId, displayName) {
   // Update all items that belong to this feed to use the rssTitle as source (not display name)
   // Items should always use rssTitle for matching, display name is only for UI
   if (currentFeed.rss_title) {
+    // Get environment (default to 'prod' if not set)
+    const env = process.env.APP_ENV || 'prod';
     const { error: itemsError } = await supabase
       .from('feed_items')
       .update({ source: currentFeed.rss_title })
-      .eq('feed_id', feedId);
+      .eq('feed_id', feedId)
+      .eq('env', env);
 
     if (itemsError) {
       console.error('[DB] Error updating feed items source:', itemsError);
@@ -229,10 +244,13 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
 
   // Update all items for this feed to use the rssTitle as source
   // This ensures items can be correctly matched after RSS title changes
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
   const { error: itemsError } = await supabase
     .from('feed_items')
     .update({ source: rssTitle })
-    .eq('feed_id', feedId);
+    .eq('feed_id', feedId)
+    .eq('env', env);
 
   if (itemsError) {
     console.error('[DB] Error updating feed items source with rssTitle:', itemsError);
@@ -287,9 +305,13 @@ export async function getFeedItems({ status, feedId, limit } = {}) {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   let query = supabase
     .from('feed_items')
     .select('*')
+    .eq('env', env)
     .order('published_at', { ascending: false, nullsFirst: false });
 
   if (status) {
@@ -325,11 +347,15 @@ export async function getFeedItem(itemId) {
     throw new Error('Supabase not configured');
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   // First try by UUID id
   let { data, error } = await supabase
     .from('feed_items')
     .select('*')
     .eq('id', itemId)
+    .eq('env', env)
     .single();
 
   // If not found and itemId looks like a URL or non-UUID, try external_id
@@ -341,6 +367,7 @@ export async function getFeedItem(itemId) {
         .from('feed_items')
         .select('*')
         .eq('external_id', itemId)
+        .eq('env', env)
         .single();
       
       if (!result.error) {
@@ -352,6 +379,7 @@ export async function getFeedItem(itemId) {
         .from('feed_items')
         .select('*')
         .eq('url', itemId)
+        .eq('env', env)
         .single();
       
       if (!urlResult.error) {
@@ -384,6 +412,9 @@ export async function upsertFeedItems(feedId, items) {
     return [];
   }
 
+  // Get environment (default to 'prod' if not set)
+  const env = process.env.APP_ENV || 'prod';
+
   // Transform items for database
   const dbItems = items.map(item => ({
     feed_id: feedId,
@@ -398,13 +429,14 @@ export async function upsertFeedItems(feedId, items) {
     paywall_status: item.paywallStatus || 'unknown',
     source: item.source || null,
     source_type: item.sourceType || 'rss',
+    env,
   }));
 
-  // Use upsert with ON CONFLICT on (feed_id, url)
+  // Use upsert with ON CONFLICT on (feed_id, url, env)
   const { data, error } = await supabase
     .from('feed_items')
     .upsert(dbItems, {
-      onConflict: 'feed_id,url',
+      onConflict: 'feed_items_feed_id_url_env_unique',
       ignoreDuplicates: false,
     })
     .select();
