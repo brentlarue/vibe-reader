@@ -1148,6 +1148,7 @@ app.get('/api/preferences', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
       const prefs = await feedRepo.getPreferences();
+      console.log('[API] Retrieved preferences:', Object.keys(prefs));
       return res.json(prefs);
     }
     
@@ -1168,9 +1169,11 @@ app.get('/api/preferences', requireAuth, async (req, res) => {
 app.post('/api/preferences', requireAuth, async (req, res) => {
   try {
     const updates = req.body;
+    console.log('[API] Updating preferences:', Object.keys(updates));
 
     if (isSupabaseConfigured()) {
       await feedRepo.updatePreferences(updates);
+      console.log('[API] Preferences updated successfully');
       return res.json({ success: true });
     }
     

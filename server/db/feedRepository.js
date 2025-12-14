@@ -777,9 +777,19 @@ export async function getPreferences() {
   // Transform array of key-value pairs to object
   const prefs = {};
   for (const row of (data || [])) {
-    prefs[row.key] = row.value;
+    // Parse JSONB value if it's a string, otherwise use as-is
+    let value = row.value;
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value);
+      } catch (e) {
+        // If parsing fails, use the string as-is (for backward compatibility)
+      }
+    }
+    prefs[row.key] = value;
   }
 
+  console.log(`[DB] Retrieved preferences for env=${env}:`, Object.keys(prefs));
   return prefs;
 }
 
@@ -820,9 +830,11 @@ export async function updatePreferences(updates) {
 
   const upserts = Object.entries(updates).map(([key, value]) => ({
     key,
-    value,
+    value, // Supabase JSONB will handle the value correctly
     env,
   }));
+
+  console.log(`[DB] Updating preferences for env=${env}:`, Object.keys(updates));
 
   const { error } = await supabase
     .from('preferences')
@@ -832,7 +844,7 @@ export async function updatePreferences(updates) {
     console.error('[DB] Error updating preferences:', error);
     throw error;
   }
-  console.log('[DB] Successfully updated preferences');
+  console.log(`[DB] Successfully updated preferences for env=${env}:`, Object.keys(updates));
 }
 
 // ============================================================================
