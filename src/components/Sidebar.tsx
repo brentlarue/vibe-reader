@@ -260,7 +260,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         backgroundColor: 'var(--theme-card-bg)', 
         borderColor: 'var(--theme-border)',
         color: 'var(--theme-text)',
-        width: '17rem', // Consistent width for both dev and prod
+        width: '16rem', // Previous width
         maxWidth: '85vw',
         height: '100dvh', // Use dynamic viewport height for iOS
         minHeight: '-webkit-fill-available', // Fallback for older iOS
@@ -300,7 +300,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
               }
             }, 0);
           }}
-          className="text-xl sm:text-2xl font-semibold tracking-tight cursor-pointer flex items-center gap-2 flex-1 min-w-0 whitespace-nowrap"
+          className="text-xl sm:text-2xl font-semibold tracking-tight cursor-pointer flex items-center gap-1 flex-1 min-w-0 whitespace-nowrap"
           style={{ color: 'var(--theme-text)' }}
         >
           <span className="flex-shrink-0">The Signal</span>
@@ -321,7 +321,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         {isMobileDrawerOpen && (
           <button
             onClick={onCloseMobileDrawer}
-            className="lg:hidden p-2 rounded transition-colors ml-4 flex-shrink-0 touch-manipulation"
+            className="lg:hidden p-2 rounded transition-colors ml-1 flex-shrink-0 touch-manipulation"
             style={{
               color: 'var(--theme-text-muted)',
             }}
@@ -344,7 +344,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         {/* Desktop sidebar toggle - hidden on mobile */}
         <button
           onClick={onToggle}
-          className="hidden lg:block group/toggle relative p-2 rounded transition-colors ml-4 flex-shrink-0"
+          className="hidden lg:block group/toggle relative p-2 rounded transition-colors ml-1 flex-shrink-0"
           style={{
             color: 'var(--theme-text-muted)',
           }}
