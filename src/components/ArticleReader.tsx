@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { FeedItem } from '../types';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { FeedItem, Annotation } from '../types';
 import { storage } from '../utils/storage';
 import { summarizeItem } from '../services/aiSummarizer';
 import { generateAIFeature, AIFeatureType } from '../services/aiFeatures';
+import { createAnnotation, getAnnotationsForArticle } from '../utils/annotations';
 import ArticleActionBar from './ArticleActionBar';
 
 // Session storage key for navigation context
@@ -18,6 +19,7 @@ interface NavContext {
 export default function ArticleReader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [item, setItem] = useState<FeedItem | null>(null);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -40,6 +42,20 @@ export default function ArticleReader() {
   const [readingProgress, setReadingProgress] = useState(0);
   const articleContentRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const notesSectionRef = useRef<HTMLDivElement>(null);
+
+  // Highlight state
+  const [selectedText, setSelectedText] = useState<string | null>(null);
+  const [highlightBoxPosition, setHighlightBoxPosition] = useState<{ top: number; left: number } | null>(null);
+  const [highlights, setHighlights] = useState<Annotation[]>([]);
+  const highlightBoxRef = useRef<HTMLDivElement>(null);
+  const hasScrolledToHighlightRef = useRef<boolean>(false);
+
+  // Note state
+  const [notes, setNotes] = useState<Annotation[]>([]);
+  const [showNoteInput, setShowNoteInput] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   // Load navigation context from sessionStorage
   useEffect(() => {
@@ -259,10 +275,452 @@ export default function ArticleReader() {
       });
       setGeneratingFeature(null);
       summaryGenerationInProgress.current = null;
+
+      // Load highlights and notes for this article
+      try {
+        const articleAnnotations = await getAnnotationsForArticle(found.id);
+        setHighlights(articleAnnotations.filter(a => a.type === 'highlight'));
+        setNotes(articleAnnotations.filter(a => a.type === 'note'));
+      } catch (error) {
+        console.error('Error loading annotations:', error);
+      }
+      
+      // Reset scroll flag when loading a new article
+      hasScrolledToHighlightRef.current = false;
     };
     
     loadArticle();
   }, [id]);
+
+  // Reload highlights and notes when annotations are updated (e.g., deleted from Notes page)
+  useEffect(() => {
+    if (!item) return;
+
+    const handleUpdate = async () => {
+      try {
+        const articleAnnotations = await getAnnotationsForArticle(item.id);
+        setHighlights(articleAnnotations.filter(a => a.type === 'highlight'));
+        setNotes(articleAnnotations.filter(a => a.type === 'note'));
+      } catch (error) {
+        console.error('Error reloading annotations:', error);
+      }
+    };
+
+    window.addEventListener('feedItemsUpdated', handleUpdate);
+    return () => window.removeEventListener('feedItemsUpdated', handleUpdate);
+  }, [item]);
+
+  // Scroll to highlight when coming from Notes page (instant, no animation)
+  // Only runs once per article load when location.state has scrollToHighlight
+  useEffect(() => {
+    // Don't scroll if we've already scrolled, or if there's no scroll target
+    if (hasScrolledToHighlightRef.current || !item || !articleContentRef.current || !location.state) return;
+
+    const state = location.state as { scrollToHighlight?: string; highlightId?: string };
+    const scrollToHighlight = state?.scrollToHighlight;
+    if (!scrollToHighlight) return;
+
+    // Wait for content to be rendered with highlights, then scroll instantly
+    const scrollToHighlightText = () => {
+      if (!articleContentRef.current || hasScrolledToHighlightRef.current) return false;
+
+      // Find all mark elements (highlights)
+      const marks = articleContentRef.current.querySelectorAll('mark');
+      
+      for (const mark of Array.from(marks)) {
+        const markText = mark.textContent?.trim() || '';
+        const searchText = scrollToHighlight.trim();
+        
+        // Check if this mark contains the highlight text we're looking for
+        if (markText.toLowerCase().includes(searchText.toLowerCase()) || 
+            searchText.toLowerCase().includes(markText.toLowerCase())) {
+          // Get the scroll container (main element)
+          const scrollContainer = document.querySelector('main') as HTMLElement;
+          
+          if (scrollContainer) {
+            // Calculate scroll position - get mark's position relative to article content
+            const markRect = mark.getBoundingClientRect();
+            const articleRect = articleContentRef.current.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const currentScroll = scrollContainer.scrollTop;
+            
+            // Calculate: mark position in article + article position in container + current scroll - offset
+            const markOffsetInArticle = markRect.top - articleRect.top;
+            const articleOffsetInContainer = articleRect.top - containerRect.top;
+            const targetScroll = currentScroll + markOffsetInArticle + articleOffsetInContainer - 100;
+            
+            // Scroll instantly (no animation) - set directly
+            scrollContainer.scrollTop = targetScroll;
+          } else {
+            // Fallback to window scrolling
+            const markRect = mark.getBoundingClientRect();
+            window.scrollTo({ top: window.scrollY + markRect.top - 100, behavior: 'auto' });
+          }
+          
+          // Mark that we've scrolled so we don't scroll again
+          hasScrolledToHighlightRef.current = true;
+          
+          // Highlight the mark briefly for visual feedback
+          const originalBg = mark.style.backgroundColor;
+          mark.style.backgroundColor = 'rgba(255, 235, 59, 0.6)';
+          setTimeout(() => {
+            mark.style.backgroundColor = originalBg;
+          }, 1000);
+          
+          return true; // Found and scrolled
+        }
+      }
+      return false; // Not found yet
+    };
+
+    // Try scrolling immediately and with delays to ensure content is rendered
+    let scrolled = false;
+    
+    // Immediate attempt
+    if (scrollToHighlightText()) {
+      scrolled = true;
+    }
+    
+    // Additional attempts with requestAnimationFrame for next paint
+    const rafId = requestAnimationFrame(() => {
+      if (!scrolled && !hasScrolledToHighlightRef.current && scrollToHighlightText()) {
+        scrolled = true;
+      }
+    });
+    
+    // Fallback timeouts
+    const timeout1 = setTimeout(() => {
+      if (!scrolled && !hasScrolledToHighlightRef.current) {
+        scrollToHighlightText();
+      }
+    }, 10);
+    
+    const timeout2 = setTimeout(() => {
+      if (!scrolled && !hasScrolledToHighlightRef.current) {
+        scrollToHighlightText();
+      }
+    }, 100);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+    };
+  }, [item, location.state]); // Removed 'highlights' from dependencies to prevent re-scrolling when highlights update
+
+  // Scroll to note when coming from Notes page (instant, no animation)
+  useEffect(() => {
+    if (!item || !location.state) return;
+
+    const state = location.state as { scrollToNote?: string; noteId?: string };
+    const scrollToNoteId = state?.scrollToNote || state?.noteId;
+    if (!scrollToNoteId) return;
+
+    // Wait for notes to be loaded and rendered, then scroll instantly
+    const scrollToNote = () => {
+      if (!notesSectionRef.current) return false;
+
+      // Find the note card with the matching ID
+      const noteCards = notesSectionRef.current.querySelectorAll('[data-note-id]');
+      
+      for (const card of Array.from(noteCards)) {
+        const cardNoteId = card.getAttribute('data-note-id');
+        if (cardNoteId === scrollToNoteId) {
+          // Get the scroll container (main element)
+          const scrollContainer = document.querySelector('main') as HTMLElement;
+          
+          if (scrollContainer) {
+            // Calculate scroll position - get card's position relative to notes section
+            const cardRect = card.getBoundingClientRect();
+            const notesRect = notesSectionRef.current.getBoundingClientRect();
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const currentScroll = scrollContainer.scrollTop;
+            
+            // Calculate: card position in notes section + notes section position in container + current scroll - offset
+            const cardOffsetInNotes = cardRect.top - notesRect.top;
+            const notesOffsetInContainer = notesRect.top - containerRect.top;
+            const targetScroll = currentScroll + cardOffsetInNotes + notesOffsetInContainer - 100;
+            
+            // Scroll instantly (no animation) - set directly
+            scrollContainer.scrollTop = targetScroll;
+          } else {
+            // Fallback to window scrolling
+            const cardRect = card.getBoundingClientRect();
+            window.scrollTo({ top: window.scrollY + cardRect.top - 100, behavior: 'auto' });
+          }
+          
+          // Briefly highlight the note card for visual feedback
+          const originalBg = (card as HTMLElement).style.backgroundColor;
+          (card as HTMLElement).style.backgroundColor = 'var(--theme-hover-bg)';
+          setTimeout(() => {
+            (card as HTMLElement).style.backgroundColor = originalBg;
+          }, 1000);
+          
+          return true; // Found and scrolled
+        }
+      }
+      return false; // Not found yet
+    };
+
+    // Try scrolling immediately and with delays to ensure content is rendered
+    let scrolled = false;
+    
+    // Immediate attempt
+    if (scrollToNote()) {
+      scrolled = true;
+    }
+    
+    // Additional attempts with requestAnimationFrame for next paint
+    const rafId = requestAnimationFrame(() => {
+      if (!scrolled && scrollToNote()) {
+        scrolled = true;
+      }
+    });
+    
+    // Fallback timeouts
+    const timeout1 = setTimeout(() => {
+      if (!scrolled) {
+        scrollToNote();
+      }
+    }, 10);
+    
+    const timeout2 = setTimeout(() => {
+      if (!scrolled) {
+        scrollToNote();
+      }
+    }, 100);
+
+    const timeout3 = setTimeout(() => {
+      if (!scrolled) {
+        scrollToNote();
+      }
+    }, 500);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
+    };
+  }, [item, notes, location.state]);
+
+  // Handle text selection for highlighting
+  useEffect(() => {
+    if (!item || !articleContentRef.current) return;
+
+    const handleSelection = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        setSelectedText(null);
+        setHighlightBoxPosition(null);
+        return;
+      }
+
+      const selectedText = selection.toString().trim();
+      if (!selectedText || selectedText.length === 0) {
+        setSelectedText(null);
+        setHighlightBoxPosition(null);
+        return;
+      }
+
+      // Don't show highlight box if selection is in inputs or buttons
+      const range = selection.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      if (container.nodeType === Node.TEXT_NODE) {
+        const parent = container.parentElement;
+        if (parent && (parent.tagName === 'INPUT' || parent.tagName === 'TEXTAREA' || parent.tagName === 'BUTTON')) {
+          setSelectedText(null);
+          setHighlightBoxPosition(null);
+          return;
+        }
+      }
+
+      // Check if selection is within the article content
+      if (!articleContentRef.current.contains(range.commonAncestorContainer)) {
+        setSelectedText(null);
+        setHighlightBoxPosition(null);
+        return;
+      }
+
+      setSelectedText(selectedText);
+
+      // Position the highlight box near the selection (viewport coordinates for fixed positioning)
+      const rangeRect = range.getBoundingClientRect();
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+      
+      setHighlightBoxPosition({
+        top: rangeRect.bottom + scrollTop + 8,
+        left: rangeRect.left + scrollLeft + (rangeRect.width / 2) - 40,
+      });
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (highlightBoxRef.current && !highlightBoxRef.current.contains(e.target as Node)) {
+        // Clear selection if clicking outside
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          if (!articleContentRef.current?.contains(range.commonAncestorContainer)) {
+            setSelectedText(null);
+            setHighlightBoxPosition(null);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelection);
+    document.addEventListener('mousedown', handleClickOutside);
+    const contentEl = articleContentRef.current;
+    if (contentEl) {
+      contentEl.addEventListener('mouseup', handleSelection);
+    }
+
+    return () => {
+      document.removeEventListener('selectionchange', handleSelection);
+      document.removeEventListener('mousedown', handleClickOutside);
+      if (contentEl) {
+        contentEl.removeEventListener('mouseup', handleSelection);
+      }
+    };
+  }, [item]);
+
+  // Handle creating a highlight
+  const handleCreateHighlight = async () => {
+    if (!item || !selectedText || !item.feedId) return;
+
+    try {
+      await createAnnotation(item.id, item.feedId, 'highlight', selectedText);
+      
+      // Reload highlights and notes
+      const articleAnnotations = await getAnnotationsForArticle(item.id);
+      setHighlights(articleAnnotations.filter(a => a.type === 'highlight'));
+      setNotes(articleAnnotations.filter(a => a.type === 'note'));
+      
+      // Clear selection
+      window.getSelection()?.removeAllRanges();
+      setSelectedText(null);
+      setHighlightBoxPosition(null);
+    } catch (error) {
+      console.error('Error creating highlight:', error);
+    }
+  };
+
+  // Handle adding a note
+  const handleAddNote = () => {
+    setShowNoteInput(true);
+    setNoteText('');
+  };
+
+  // Handle saving a note
+  const handleSaveNote = async () => {
+    if (!item || !noteText.trim() || !item.feedId || isSavingNote) return;
+
+    setIsSavingNote(true);
+    try {
+      await createAnnotation(item.id, item.feedId, 'note', noteText.trim());
+      setShowNoteInput(false);
+      setNoteText('');
+      
+      // Reload notes to show the newly created note
+      const articleAnnotations = await getAnnotationsForArticle(item.id);
+      setNotes(articleAnnotations.filter(a => a.type === 'note'));
+      
+      // Trigger event to refresh Notes page if open
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    } catch (error) {
+      console.error('Error creating note:', error);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  // Handle canceling note input
+  const handleCancelNote = () => {
+    setShowNoteInput(false);
+    setNoteText('');
+  };
+
+  // Apply highlights to content
+  const applyHighlightsToContent = useCallback((htmlContent: string, highlights: Annotation[]): string => {
+    if (!highlights || highlights.length === 0) return htmlContent;
+
+    // Use DOM manipulation for safer highlighting
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${htmlContent}</div>`, 'text/html');
+    const container = doc.body.firstChild as HTMLElement;
+    
+    if (!container) return htmlContent;
+
+    // Sort highlights by length (longest first) to avoid partial matches
+    const sortedHighlights = [...highlights].sort((a, b) => b.content.length - a.content.length);
+
+    sortedHighlights.forEach(highlight => {
+      const searchText = highlight.content.trim();
+      if (!searchText) return;
+
+      // Get all text nodes recursively
+      const walker = doc.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      const textNodes: Text[] = [];
+      let node;
+      while (node = walker.nextNode()) {
+        // Skip if already inside a mark tag
+        let parent = node.parentElement;
+        let isInsideMark = false;
+        while (parent && parent !== container) {
+          if (parent.tagName === 'MARK') {
+            isInsideMark = true;
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        if (!isInsideMark) {
+          textNodes.push(node as Text);
+        }
+      }
+
+      // Search and highlight
+      textNodes.forEach(textNode => {
+        const text = textNode.textContent || '';
+        const searchLower = searchText.toLowerCase();
+        const textLower = text.toLowerCase();
+        const index = textLower.indexOf(searchLower);
+        
+        if (index !== -1) {
+          const beforeText = text.substring(0, index);
+          const matchText = text.substring(index, index + searchText.length);
+          const afterText = text.substring(index + searchText.length);
+
+          const mark = doc.createElement('mark');
+          // Kindle-like transparent yellow highlight
+          mark.style.backgroundColor = 'rgba(255, 235, 59, 0.35)';
+          mark.style.padding = '2px 0';
+          mark.style.borderRadius = '2px';
+          // Ensure text color remains readable in all themes (especially dark)
+          mark.style.color = 'inherit';
+          mark.textContent = matchText;
+
+          const fragment = doc.createDocumentFragment();
+          if (beforeText) {
+            fragment.appendChild(doc.createTextNode(beforeText));
+          }
+          fragment.appendChild(mark);
+          if (afterText) {
+            fragment.appendChild(doc.createTextNode(afterText));
+          }
+
+          textNode.parentNode?.replaceChild(fragment, textNode);
+        }
+      });
+    });
+
+    return container.innerHTML;
+  }, []);
 
   // Only show "not found" message if we've attempted to load and item is still null
   if (hasAttemptedLoad && !item) {
@@ -668,7 +1126,8 @@ export default function ArticleReader() {
 
   // Get content - prefer fullContent, fallback to contentSnippet
   const rawContent = item.fullContent || item.contentSnippet || '';
-  const content = processExternalLinks(rawContent);
+  const processedContent = processExternalLinks(rawContent);
+  const content = applyHighlightsToContent(processedContent, highlights);
   const contentText = rawContent.replace(/<[^>]*>/g, '').trim(); // Strip HTML for comparison
   
   // Check if content exists and is meaningful (not just the title)
@@ -863,6 +1322,7 @@ export default function ArticleReader() {
             item={item} 
             onStatusChange={handleStatusChange} 
             onDelete={handleDelete}
+            onAddNote={handleAddNote}
             showBottomBorder={true}
           />
         </div>
@@ -870,7 +1330,7 @@ export default function ArticleReader() {
         {hasMeaningfulContent ? (
           <div 
             ref={articleContentRef}
-            className="article-content prose prose-lg max-w-none"
+            className="article-content prose prose-lg max-w-none relative"
             style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}
             dangerouslySetInnerHTML={{ __html: content }}
           />
@@ -895,6 +1355,41 @@ export default function ArticleReader() {
                 )}
               </p>
             )}
+          </div>
+        )}
+
+        {/* Floating highlight action box */}
+        {selectedText && highlightBoxPosition && (
+          <div
+            ref={highlightBoxRef}
+            className="fixed z-50 flex items-center gap-2 px-3 py-2 rounded shadow-lg"
+            style={{
+              top: `${highlightBoxPosition.top}px`,
+              left: `${highlightBoxPosition.left}px`,
+              backgroundColor: 'var(--theme-card-bg)',
+              border: '1px solid var(--theme-border)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={handleCreateHighlight}
+              className="flex items-center gap-2 px-2 py-1 rounded transition-colors touch-manipulation"
+              style={{
+                color: 'var(--theme-text)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Highlight"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="8" fill="#FFEB3B" />
+              </svg>
+              <span className="text-sm">Highlight</span>
+            </button>
           </div>
         )}
 
@@ -1064,12 +1559,143 @@ export default function ArticleReader() {
           </div>
         )}
 
+        {/* Notes display section - shows all notes for this article */}
+        {notes.length > 0 && (
+          <div ref={notesSectionRef} className="mt-8 sm:mt-12">
+            <h2 
+              className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6"
+              style={{ color: 'var(--theme-text)' }}
+            >
+              Notes
+            </h2>
+            <div className="space-y-4 sm:space-y-6">
+              {notes.map((note) => (
+                <div
+                  key={note.id}
+                  data-note-id={note.id}
+                  className="p-4 border rounded"
+                  style={{
+                    borderColor: 'var(--theme-border)',
+                    backgroundColor: 'var(--theme-card-bg)',
+                  }}
+                >
+                  <p 
+                    className="text-base sm:text-lg leading-relaxed whitespace-pre-wrap"
+                    style={{ color: 'var(--theme-text-secondary)' }}
+                  >
+                    {note.content}
+                  </p>
+                  <p 
+                    className="text-xs sm:text-sm mt-3"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    {new Date(note.createdAt).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Note input section - appears at end of article */}
+        {showNoteInput && (
+          <div 
+            className="mt-8 sm:mt-12 p-4 border rounded"
+            style={{ 
+              borderColor: 'var(--theme-border)',
+              backgroundColor: 'var(--theme-card-bg)',
+            }}
+          >
+            <label 
+              className="block text-sm mb-2"
+              style={{ color: 'var(--theme-text-secondary)' }}
+            >
+              Add note
+            </label>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              className="w-full px-3 py-2 text-sm border focus:outline-none resize-none"
+              style={{
+                borderColor: 'var(--theme-border)',
+                backgroundColor: 'var(--theme-bg)',
+                color: 'var(--theme-text)',
+                minHeight: '100px',
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = 'var(--theme-accent)';
+                e.currentTarget.style.outline = '1px solid var(--theme-accent)';
+                e.currentTarget.style.outlineOffset = '-1px';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+                e.currentTarget.style.outline = 'none';
+              }}
+              placeholder="Write your note here..."
+              disabled={isSavingNote}
+              autoFocus
+            />
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={handleSaveNote}
+                disabled={!noteText.trim() || isSavingNote}
+                className="px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: isSavingNote || !noteText.trim() ? 'var(--theme-border)' : 'var(--theme-button-bg)',
+                  color: isSavingNote || !noteText.trim() ? 'var(--theme-text-muted)' : 'var(--theme-button-text)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSavingNote && noteText.trim()) {
+                    e.currentTarget.style.opacity = '0.9';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSavingNote && noteText.trim()) {
+                    e.currentTarget.style.opacity = '1';
+                  }
+                }}
+              >
+                {isSavingNote ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={handleCancelNote}
+                disabled={isSavingNote}
+                className="px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+                style={{
+                  color: 'var(--theme-text-secondary)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSavingNote) {
+                    e.currentTarget.style.color = 'var(--theme-text)';
+                    e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSavingNote) {
+                    e.currentTarget.style.color = 'var(--theme-text-secondary)';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Action bar below content */}
         <div className="mt-8">
           <ArticleActionBar 
             item={item} 
             onStatusChange={handleStatusChange} 
-            onDelete={handleDelete} 
+            onDelete={handleDelete}
+            onAddNote={handleAddNote}
           />
         </div>
       </article>

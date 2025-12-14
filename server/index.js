@@ -1344,6 +1344,87 @@ app.post('/api/data/preferences', requireAuth, async (req, res) => {
   }
 });
 
+// ============================================================================
+// ANNOTATIONS API
+// ============================================================================
+
+// POST /api/annotations - Create a new annotation (highlight or note)
+app.post('/api/annotations', requireAuth, async (req, res) => {
+  try {
+    const { feedItemId, feedId, type, content } = req.body;
+
+    if (!feedItemId || !feedId || !type || !content) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (type !== 'highlight' && type !== 'note') {
+      return res.status(400).json({ error: 'Invalid annotation type' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const annotation = await feedRepo.createAnnotation(feedItemId, feedId, type, content);
+      return res.json(annotation);
+    }
+
+    res.status(500).json({ error: 'Database not configured' });
+  } catch (error) {
+    console.error('Error creating annotation:', error);
+    res.status(500).json({ error: 'Failed to create annotation' });
+  }
+});
+
+// GET /api/annotations - Get all annotations
+app.get('/api/annotations', requireAuth, async (req, res) => {
+  try {
+    if (isSupabaseConfigured()) {
+      const annotations = await feedRepo.getAnnotations();
+      return res.json(annotations);
+    }
+
+    res.status(500).json({ error: 'Database not configured' });
+  } catch (error) {
+    console.error('Error fetching annotations:', error);
+    res.status(500).json({ error: 'Failed to fetch annotations' });
+  }
+});
+
+// GET /api/annotations/article/:id - Get annotations for a specific article
+app.get('/api/annotations/article/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (isSupabaseConfigured()) {
+      const annotations = await feedRepo.getAnnotationsForArticle(id);
+      return res.json(annotations);
+    }
+
+    res.status(500).json({ error: 'Database not configured' });
+  } catch (error) {
+    console.error('Error fetching article annotations:', error);
+    res.status(500).json({ error: 'Failed to fetch article annotations' });
+  }
+});
+
+// DELETE /api/annotations/:id - Delete an annotation
+app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('[API] Deleting annotation:', id);
+
+    if (isSupabaseConfigured()) {
+      await feedRepo.deleteAnnotation(id);
+      console.log('[API] Annotation deleted successfully:', id);
+      return res.json({ success: true });
+    }
+
+    res.status(500).json({ error: 'Database not configured' });
+  } catch (error) {
+    console.error('[API] Error deleting annotation:', error);
+    console.error('[API] Error details:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to delete annotation', details: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const health = {

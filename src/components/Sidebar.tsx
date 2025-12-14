@@ -44,6 +44,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     { path: '/inbox', label: 'Inbox' },
     { path: '/saved', label: 'Later' },
     { path: '/bookmarks', label: 'Bookmarks' },
+    { path: '/notes', label: 'Notes' },
     { path: '/archive', label: 'Archive' },
   ];
 

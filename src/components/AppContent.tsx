@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
+import NotesPage from './NotesPage';
 import { Feed } from '../types';
 
 interface AppContentProps {
@@ -142,6 +143,7 @@ function AppContent({
           <Route path="/inbox" element={<FeedList status="inbox" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/saved" element={<FeedList status="saved" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
+          <Route path="/notes" element={<NotesPage />} />
           <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/article/:id" element={<ArticleReader />} />
         </Routes>

@@ -29,3 +29,17 @@ export interface Feed {
   sourceType: SourceType;
   rssTitle?: string; // Original RSS feed title (used for matching items, never changes)
 }
+
+export type AnnotationType = 'highlight' | 'note';
+
+export interface Annotation {
+  id: string;
+  feedItemId: string; // Reference to the article
+  feedId: string; // Reference to the feed
+  type: AnnotationType;
+  content: string; // Highlighted text or note body
+  createdAt: string;
+  // Article metadata for display
+  articleTitle?: string;
+  feedName?: string;
+}

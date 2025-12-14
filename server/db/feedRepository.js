@@ -911,3 +911,155 @@ export async function feedItemExistsByUrl(feedId, url) {
   return count > 0;
 }
 
+// ============================================================================
+// ANNOTATIONS (Notes & Highlights)
+// ============================================================================
+
+/**
+ * Create a new annotation (highlight or note)
+ * @param {string} feedItemId - Feed item UUID
+ * @param {string} feedId - Feed UUID
+ * @param {string} type - 'highlight' or 'note'
+ * @param {string} content - Highlighted text or note body
+ * @returns {Promise<Object>} Created annotation
+ */
+export async function createAnnotation(feedItemId, feedId, type, content) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const env = getAppEnv();
+
+  const { data, error } = await supabase
+    .from('annotations')
+    .insert({
+      feed_item_id: feedItemId,
+      feed_id: feedId,
+      type,
+      content,
+      env,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error creating annotation:', error);
+    throw error;
+  }
+
+  return transformAnnotation(data);
+}
+
+/**
+ * Get all annotations for the current environment
+ * @returns {Promise<Array>} List of annotations with article/feed metadata
+ */
+export async function getAnnotations() {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const env = getAppEnv();
+
+  const { data, error } = await supabase
+    .from('annotations')
+    .select(`
+      *,
+      feed_items:feed_item_id (
+        title,
+        source
+      ),
+      feeds:feed_id (
+        display_name
+      )
+    `)
+    .eq('env', env)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[DB] Error fetching annotations:', error);
+    throw error;
+  }
+
+  return (data || []).map(transformAnnotationWithMetadata);
+}
+
+/**
+ * Get annotations for a specific article
+ * @param {string} feedItemId - Feed item UUID
+ * @returns {Promise<Array>} List of annotations for the article
+ */
+export async function getAnnotationsForArticle(feedItemId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const env = getAppEnv();
+
+  const { data, error } = await supabase
+    .from('annotations')
+    .select('*')
+    .eq('feed_item_id', feedItemId)
+    .eq('env', env)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[DB] Error fetching annotations for article:', error);
+    throw error;
+  }
+
+  return (data || []).map(transformAnnotation);
+}
+
+/**
+ * Transform database annotation to frontend format
+ * @param {Object} dbAnnotation - Database row
+ * @returns {Object} Frontend-compatible annotation
+ */
+function transformAnnotation(dbAnnotation) {
+  return {
+    id: dbAnnotation.id,
+    feedItemId: dbAnnotation.feed_item_id,
+    feedId: dbAnnotation.feed_id,
+    type: dbAnnotation.type,
+    content: dbAnnotation.content,
+    createdAt: dbAnnotation.created_at,
+  };
+}
+
+/**
+ * Transform annotation with metadata (for Notes page)
+ * @param {Object} dbAnnotation - Database row with joined data
+ * @returns {Object} Frontend-compatible annotation with metadata
+ */
+function transformAnnotationWithMetadata(dbAnnotation) {
+  const annotation = transformAnnotation(dbAnnotation);
+  annotation.articleTitle = dbAnnotation.feed_items?.title || '';
+  annotation.feedName = dbAnnotation.feeds?.display_name || '';
+  return annotation;
+}
+
+/**
+ * Delete an annotation by ID
+ * @param {string} annotationId - Annotation UUID
+ * @returns {Promise<void>}
+ */
+export async function deleteAnnotation(annotationId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const env = getAppEnv();
+
+  const { error } = await supabase
+    .from('annotations')
+    .delete()
+    .eq('id', annotationId)
+    .eq('env', env);
+
+  if (error) {
+    console.error('[DB] Error deleting annotation:', error);
+    throw error;
+  }
+}
+
