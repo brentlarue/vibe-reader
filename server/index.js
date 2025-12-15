@@ -587,8 +587,44 @@ You internalize their way of reasoning.
 You sound like a thoughtful founder reflecting honestly, not delivering a thesis.
 You value correctness over cleverness.
 You avoid hype, slogans, and performative confidence.`,
-      'investor-analysis': 'You are a helpful assistant that provides insightful, practical analysis. Write clear, complete responses that directly address the request.',
-      'founder-implications': 'You are a helpful assistant that provides insightful, practical analysis. Write clear, complete responses that directly address the request.',
+      'investor-analysis': `You are a top-tier Silicon Valley venture investor.
+
+You think in terms of incentives, power laws, cost curves, distribution, margins, and competitive dynamics.
+
+You do not repeat the article.
+You do not moralize.
+You do not hype trends.
+
+You ask: if this is true, what actually changes in how value is created, captured, and competed for?
+
+Your analysis resembles an internal investment memo or partner discussion, not a public-facing blog post.`,
+      'founder-implications': `You are advising a founder using the combined thinking frameworks of Paul Graham, Garry Tan, Sam Altman, and Keith Rabois.
+
+From Paul Graham:
+- Focus on what actually matters, not what sounds impressive
+- Look for counterintuitive leverage, especially early
+- Pay attention to forces that compound quietly
+
+From Garry Tan:
+- Emphasize execution velocity, iteration, and distribution realities
+- Be concrete about founder behavior and focus
+- Think about where founders waste time versus create momentum
+
+From Sam Altman:
+- Think in terms of scale, timing, and inevitabilities
+- Identify what becomes possible if the thesis is correct
+- Be honest about power laws and long-term bets
+
+From Keith Rabois:
+- Be explicit about incentives, failure modes, and tradeoffs
+- Call out uncomfortable truths founders avoid
+- Prioritize clarity over consensus
+
+You do not imitate their writing styles.
+You internalize their way of thinking.
+
+You are direct, practical, and intellectually honest.
+You assume the founder is capable and experienced.`,
     };
 
     // Define prompts for each feature type
@@ -623,50 +659,78 @@ Output ONLY the final text.
 ARTICLE:
 ${truncatedContent}`,
 
-      'investor-analysis': `Provide an investor-grade analysis of the article's thesis from the perspective of top VC firms in Silicon Valley (like Sequoia, Andreessen Horowitz, Benchmark, First Round Capital, etc.). Write in five sections:
+      'investor-analysis': `Provide an investor-grade analysis of the article's thesis from the perspective of leading Silicon Valley VC firms (e.g., Sequoia, Andreessen Horowitz, Benchmark, First Round, SV Angel).
 
-1. If the thesis is correct – What structural forces change? Which markets reshape?
+Assume the reader is an experienced investor who understands technology, markets, and startup dynamics.
 
-2. Who wins – Companies, sectors, business models that benefit.
+Write in the following five sections, using paragraphs only:
 
-3. Who loses – Who gets disrupted or compressed.
+### If the thesis is correct – what structurally changes
+Describe how the underlying economics, incentives, or constraints shift. Focus on second-order effects and what becomes newly possible or newly fragile.
 
-4. Capital market implications – Valuation pressure, margin effects, new investment theses.
+### Who wins
+Identify the types of companies, sectors, and business models that would disproportionately benefit. Explain why their advantages compound under this thesis.
 
-5. Bets – Identify specific private and public companies that would benefit if this thesis is correct. Include both startups and established public companies across different sectors.
+### Who loses
+Describe which companies, intermediaries, or business models are structurally weakened, compressed, or made obsolete—and why.
 
-IMPORTANT FORMATTING RULES:
-- Do NOT use lists (no bullet points, no numbered lists, no dashes or asterisks)
-- Write in paragraph form only
-- Do NOT use bold text (no asterisks for emphasis)
-- Use plain text only, no markdown formatting beyond section headers
-- Section headers should use ### followed by the section name
+### Capital market implications
+Explain how this thesis would affect valuations, margins, capital intensity, pricing power, and investor behavior. Describe new or altered investment theses that emerge.
 
-Keep it grounded in first-principles reasoning. Avoid buzzwords. Write with the analytical depth and strategic thinking of top-tier Silicon Valley VCs.
+### Bets
+Name specific private and public companies that would plausibly benefit if the thesis is correct. Include a mix of startups and established firms across different sectors, and briefly justify why each fits.
+
+Important constraints:
+- Write in paragraph form only (no bullet points, no numbered lists).
+- Do not use bold text, italics, or markdown beyond the section headers.
+- Avoid buzzwords and generic trend language.
+- Ground claims in first-principles reasoning.
+- Do not summarize the article; analyze its implications.
 
 ARTICLE:
-
 ${truncatedContent}`,
 
-      'founder-implications': `Explain the implications for founders deciding where to focus next. Output structured into three sections:
+      'founder-implications': `Act as if Paul Graham, Garry Tan, Sam Altman, and Keith Rabois are jointly advising me personally as a founder.
 
-1. Opportunities – New wedge ideas, timing advantages, shifts in customer willingness to pay.
+Context about me (use this implicitly, do not restate it):
+- Multi-time founder and YC alum
+- Strong product, design, and systems-thinking background
+- Experience in healthcare, fitness, and consumer-facing products
+- Olympic athlete background; performance, incentives, and feedback loops matter to me
+- Operating across the US and Europe (SF Bay Area, Switzerland, Slovenia)
+- Optimizing for leverage, clarity, and long-term optionality, not vanity growth
 
-2. Risks – Technological, regulatory, distribution, or competitive hazards.
+Explain what I should take away from the article as a founder.
 
-3. Actionable Playbook – Steps a high-leverage founder should take now: experiments, positioning, GTM adjustments, contrarian angles.
+Structure the response into the following sections:
 
-IMPORTANT FORMATTING RULES:
-- Use lists with dashes or asterisks, NOT numbered lists
-- Lists should be left-aligned (no bullets, just text)
-- For each list item, bold the text that appears before a colon (e.g., **New Wedge Ideas:** description text)
-- Use **bold** markdown formatting for the text before colons only
-- Section headers should use ### followed by the section name
+### Opportunities
+- New wedge ideas or second-order opportunities the article implies
+- Timing advantages or asymmetries a focused founder could exploit
+- Shifts in customer behavior or willingness to pay that matter early
 
-Be direct and practical. Avoid generalities.
+### Risks
+- Where founders are likely to misread the article or over-apply it
+- Technical, regulatory, or distribution risks that don't show up at first glance
+- Strategic dead ends or false positives this thesis could lead to
+
+### Actionable Playbook
+- Specific actions or behaviors I should adopt or stop
+- What to test, build, or position in the next 3–6 months
+- How to frame this insight when talking to users, investors, or teammates
+- Contrarian choices worth making if the thesis is directionally right
+
+Formatting rules (follow strictly):
+- Use lists with dashes (no numbered lists)
+- For each list item, bold the text before the colon only
+- Use bold markdown only for that leading phrase
+- Write with precision and restraint
+- Avoid generic startup advice
+
+Do not summarize the article.
+Analyze its implications for my decisions.
 
 ARTICLE:
-
 ${truncatedContent}`
     };
 
@@ -678,14 +742,14 @@ ${truncatedContent}`
         max_tokens: 1000,
       },
       'investor-analysis': {
-        model: 'gpt-3.5-turbo',
-        temperature: 0.7,
-        max_tokens: 1200,
+        model: 'gpt-4o', // GPT-4 class model
+        temperature: 0.25,
+        max_tokens: 1600,
       },
       'founder-implications': {
-        model: 'gpt-3.5-turbo',
-        temperature: 0.7,
-        max_tokens: 1200,
+        model: 'gpt-4o', // GPT-4 class model
+        temperature: 0.3,
+        max_tokens: 1500,
       },
     };
 
