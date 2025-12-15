@@ -158,9 +158,9 @@ export default function NotesPage() {
       <div className="space-y-12">
         {sortedDates.map((dateKey) => (
           <div key={dateKey}>
-            {/* Date header - styled like body copy with top border, bold */}
+            {/* Date header - styled like body copy with top and bottom border, bold */}
             <h2 
-              className="text-base sm:text-lg leading-relaxed pt-6 border-t mb-6 font-bold"
+              className="text-base sm:text-lg leading-relaxed pt-6 pb-6 border-t border-b mb-6 font-bold"
               style={{ 
                 color: 'var(--theme-text-secondary)',
                 borderColor: 'var(--theme-border)',

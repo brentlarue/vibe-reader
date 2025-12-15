@@ -437,6 +437,7 @@ export async function upsertFeedItems(feedId, items) {
     ai_summary: item.aiSummary || null,
     status: item.status || 'inbox',
     paywall_status: item.paywallStatus || 'unknown',
+    reading_order: item.readingOrder || null,
     source: item.source || null,
     source_type: item.sourceType || 'rss',
     env,
@@ -518,6 +519,47 @@ export async function updateFeedItemStatus(itemId, status) {
 
   if (error) {
     console.error('[DB] Error updating feed item status:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
+ * Update a feed item's reading order subcategory (next | later | someday | null)
+ * Does not change the item's primary status.
+ * @param {string} itemId - Item UUID or external_id or URL
+ * @param {string|null} readingOrder - New reading order or null to clear
+ * @returns {Promise<Object>} Updated item
+ */
+export async function updateFeedItemReadingOrder(itemId, readingOrder) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const validOrders = ['next', 'later', 'someday', null];
+  if (!validOrders.includes(readingOrder)) {
+    throw new Error(`Invalid reading order: ${readingOrder}`);
+  }
+
+  // First, find the item to get its UUID (already env-scoped)
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  const env = getAppEnv();
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update({ reading_order: readingOrder })
+    .eq('id', item.id)
+    .eq('env', env)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed item reading order:', error);
     throw error;
   }
 
@@ -879,6 +921,7 @@ function transformFeedItem(dbItem) {
     aiFounderImplications: dbItem.ai_founder_implications,
     status: dbItem.status,
     paywallStatus: dbItem.paywall_status,
+    readingOrder: dbItem.reading_order ?? null,
     updatedAt: dbItem.updated_at,
   };
 }

@@ -952,6 +952,38 @@ app.post('/api/items/:itemId/status', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/items/:itemId/reading-order - Update item reading order subcategory
+app.post('/api/items/:itemId/reading-order', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { readingOrder } = req.body;
+
+    const validOrders = ['next', 'later', 'someday', null];
+    if (!validOrders.includes(readingOrder)) {
+      return res.status(400).json({ error: 'Invalid reading order. Must be one of: next, later, someday, or null.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      const item = await feedRepo.updateFeedItemReadingOrder(itemId, readingOrder);
+      return res.json(item);
+    }
+
+    // Fallback to file
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    items[index].readingOrder = readingOrder;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('Error updating item reading order:', error);
+    res.status(500).json({ error: 'Failed to update item reading order' });
+  }
+});
+
 // POST /api/items/:itemId/summary - Update item AI summary
 app.post('/api/items/:itemId/summary', requireAuth, async (req, res) => {
   try {

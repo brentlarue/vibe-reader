@@ -790,6 +790,31 @@ export default function ArticleReader() {
     }
   };
 
+  const handleReadingOrderChange = async (order: 'next' | 'later' | 'someday') => {
+    try {
+      const currentExplicit =
+        item.status === 'saved' ? item.readingOrder || null : null;
+
+      if (item.status === 'saved' && currentExplicit === order) {
+        // Clicking the current category clears Later
+        await storage.updateItemStatus(item.id, 'inbox');
+        await storage.updateItemReadingOrder(item.id, null);
+        setItem({ ...item, status: 'inbox', readingOrder: null });
+      } else {
+        // Ensure item is in Later
+        if (item.status !== 'saved') {
+          await storage.updateItemStatus(item.id, 'saved');
+        }
+        await storage.updateItemReadingOrder(item.id, order);
+        setItem({ ...item, status: 'saved', readingOrder: order });
+      }
+
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    } catch (error) {
+      console.error('Error updating reading order:', error);
+    }
+  };
+
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this item?')) {
       await storage.removeFeedItem(item.id);
@@ -1324,6 +1349,7 @@ export default function ArticleReader() {
             onDelete={handleDelete}
             onAddNote={handleAddNote}
             showBottomBorder={true}
+            onReadingOrderChange={handleReadingOrderChange}
           />
         </div>
 

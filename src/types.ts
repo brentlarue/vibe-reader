@@ -1,5 +1,7 @@
 export type SourceType = 'rss' | 'x';
 
+export type ReadingOrder = 'next' | 'later' | 'someday';
+
 export type FeedItemStatus = 'inbox' | 'saved' | 'bookmarked' | 'archived';
 
 export type Theme = 'light' | 'dark' | 'sepia' | 'hn';
@@ -18,6 +20,9 @@ export interface FeedItem {
   aiInvestorAnalysis?: string;
   aiFounderImplications?: string;
   status: FeedItemStatus;
+  // Reading order subcategory for items in the Later queue
+  // Only applies when status === 'saved'
+  readingOrder?: ReadingOrder | null;
   fullContent?: string;
   updatedAt?: string; // Timestamp when item was last updated
 }

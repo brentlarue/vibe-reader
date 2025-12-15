@@ -20,6 +20,7 @@ export default function MeatballMenu({
 }: MeatballMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   // Calculate menu position when opening
@@ -38,7 +39,11 @@ export default function MeatballMenu({
     if (!isOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const isOnButton = buttonRef.current?.contains(target);
+      const isOnMenu = menuRef.current?.contains(target);
+
+      if (!isOnButton && !isOnMenu) {
         setIsOpen(false);
       }
     };
@@ -125,18 +130,10 @@ export default function MeatballMenu({
         </svg>
       </button>
 
-      {/* Click outside overlay */}
-      {isOpen && createPortal(
-        <div
-          className="fixed inset-0 z-[100]"
-          onClick={() => setIsOpen(false)}
-        />,
-        document.body
-      )}
-
       {/* Menu Card */}
       {isOpen && createPortal(
         <div
+          ref={menuRef}
           className="fixed shadow-xl py-1 z-[101] min-w-[160px]"
           style={{
             backgroundColor: 'var(--theme-card-bg)',

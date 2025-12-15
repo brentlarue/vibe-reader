@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { FeedItem } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { storage } from '../utils/storage';
@@ -28,6 +29,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
   const location = useLocation();
   const [showToast, setShowToast] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showReadingOrderMenu, setShowReadingOrderMenu] = useState(false);
+  const readingOrderButtonRef = useRef<HTMLButtonElement>(null);
+  const readingOrderMenuRef = useRef<HTMLDivElement>(null);
+  const [readingOrderMenuPosition, setReadingOrderMenuPosition] = useState({ top: 0, left: 0 });
 
   const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
@@ -100,6 +105,82 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     } else {
       // Open share modal for web
       setShowShareModal(true);
+    }
+  };
+
+  // Calculate reading order menu position when opening
+  useEffect(() => {
+    if (showReadingOrderMenu && readingOrderButtonRef.current) {
+      const rect = readingOrderButtonRef.current.getBoundingClientRect();
+      setReadingOrderMenuPosition({
+        top: rect.bottom + 8, // 8px gap below button
+        left: rect.left,
+      });
+    }
+  }, [showReadingOrderMenu]);
+
+  // Close reading order menu when clicking outside
+  useEffect(() => {
+    if (!showReadingOrderMenu) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const isClickOnButton = readingOrderButtonRef.current?.contains(target);
+      const isClickOnMenu = readingOrderMenuRef.current?.contains(target);
+      
+      if (!isClickOnButton && !isClickOnMenu) {
+        setShowReadingOrderMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showReadingOrderMenu]);
+
+  const getEffectiveReadingOrder = () => {
+    if (item.status !== 'saved') return null;
+    if (item.readingOrder === 'next' || item.readingOrder === 'later' || item.readingOrder === 'someday') {
+      return item.readingOrder;
+    }
+    // Default existing saved items without a subcategory to "later" for filtering/grouping,
+    // but we only treat explicitly set values as "selected" in the UI.
+    return 'later' as const;
+  };
+
+  const handleReadingOrderSelect = async (order: 'next' | 'later' | 'someday') => {
+    const currentExplicit = item.status === 'saved' ? item.readingOrder || null : null;
+    
+    // Close menu immediately for better UX
+    setShowReadingOrderMenu(false);
+    
+    try {
+      console.log('Updating reading order:', { itemId: item.id, currentStatus: item.status, currentOrder: item.readingOrder, newOrder: order });
+      
+      // If already saved with this explicit subcategory, clear Later (back to inbox)
+      if (item.status === 'saved' && currentExplicit === order) {
+        console.log('Clearing Later - moving to inbox');
+        await storage.updateItemStatus(item.id, 'inbox');
+        await storage.updateItemReadingOrder(item.id, null);
+      } else {
+        // Ensure item is in Later - update status first, then reading order
+        if (item.status !== 'saved') {
+          console.log('Updating status to saved first');
+          await storage.updateItemStatus(item.id, 'saved');
+        }
+        console.log('Updating reading order to:', order);
+        await storage.updateItemReadingOrder(item.id, order);
+      }
+
+      console.log('Reading order update successful');
+      
+      // Refresh after successful update
+      onStatusChange();
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    } catch (error) {
+      console.error('Error updating reading order:', error);
+      alert(`Failed to update reading order: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+      // Reopen menu on error so user can retry
+      setShowReadingOrderMenu(true);
     }
   };
 
@@ -219,7 +300,11 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
 
       <div className="flex items-center gap-4 sm:gap-6 flex-wrap mt-5" onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={(e) => handleStatusChange('saved', e)}
+          ref={readingOrderButtonRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowReadingOrderMenu((open) => !open);
+          }}
           className="transition-colors touch-manipulation p-2 -ml-2"
           style={{
             color: item.status === 'saved' ? 'var(--theme-text)' : 'var(--theme-text-muted)',
@@ -234,13 +319,70 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
               e.currentTarget.style.color = 'var(--theme-text-muted)';
             }
           }}
-          title={item.status === 'saved' ? 'Later' : 'Later'}
-          aria-label={item.status === 'saved' ? 'Remove from Later' : 'Save for Later'}
+          title="Later"
+          aria-label="Later"
         >
           <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>
+
+        {/* Click outside overlay */}
+        {showReadingOrderMenu && createPortal(
+          <div
+            className="fixed inset-0 z-[100]"
+            onClick={() => setShowReadingOrderMenu(false)}
+          />,
+          document.body
+        )}
+
+        {/* Reading Order Menu Card */}
+        {showReadingOrderMenu && createPortal(
+          <div
+            ref={readingOrderMenuRef}
+            className="fixed shadow-xl py-1 z-[101] min-w-[120px]"
+            style={{
+              backgroundColor: 'var(--theme-card-bg)',
+              border: '1px solid var(--theme-border)',
+              top: readingOrderMenuPosition.top,
+              left: readingOrderMenuPosition.left,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(['next', 'later', 'someday'] as const).map((order) => {
+              const isSelected =
+                item.status === 'saved' && item.readingOrder === order;
+              const label =
+                order === 'next' ? 'Next' : order === 'later' ? 'Later' : 'Someday';
+              return (
+                <button
+                  key={order}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleReadingOrderSelect(order);
+                  }}
+                  className="w-full text-left px-3 py-2.5 text-sm transition-colors"
+                  style={{
+                    color: isSelected ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+                    e.currentTarget.style.color = 'var(--theme-text)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = isSelected
+                      ? 'var(--theme-text)'
+                      : 'var(--theme-text-secondary)';
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
         <button
           onClick={(e) => handleStatusChange('bookmarked', e)}
           className="transition-colors touch-manipulation p-2 -ml-2"

@@ -28,6 +28,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   const [items, setItems] = useState<FeedItem[]>([]);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [readingOrderFilter, setReadingOrderFilter] = useState<'all' | 'next' | 'later' | 'someday'>('all');
   const location = useLocation();
   const scrollKey = `scrollPosition_${status}_${selectedFeedId || 'all'}`;
   const hasRestoredScroll = useRef(false);
@@ -178,6 +179,31 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     }
   }, [onRefresh, loadItems]);
 
+  const getEffectiveReadingOrder = (item: FeedItem): 'next' | 'later' | 'someday' | null => {
+    if (item.status !== 'saved') return null;
+    if (item.readingOrder === 'next' || item.readingOrder === 'later' || item.readingOrder === 'someday') {
+      return item.readingOrder;
+    }
+    // Default existing saved items without an explicit subcategory to "later"
+    return 'later';
+  };
+
+  const allItemIds = items.map(i => i.id);
+
+  let displayedItems = items;
+  if (status === 'saved' && readingOrderFilter !== 'all') {
+    displayedItems = items.filter(item => getEffectiveReadingOrder(item) === readingOrderFilter);
+  }
+
+  const groupedByReadingOrder =
+    status === 'saved' && readingOrderFilter === 'all'
+      ? {
+          next: items.filter(item => getEffectiveReadingOrder(item) === 'next'),
+          later: items.filter(item => getEffectiveReadingOrder(item) === 'later'),
+          someday: items.filter(item => getEffectiveReadingOrder(item) === 'someday'),
+        }
+      : null;
+
   // Only show "no items" message if we've attempted to load and items array is empty
   if (hasAttemptedLoad && items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
@@ -187,7 +213,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
           className="flex items-center justify-center w-full"
           style={{ 
             color: 'var(--theme-text-muted)',
-            minHeight: 'calc(100vh - 6rem)',
+            minHeight: 'calc(100dvh - 8rem)',
           }}
         >
           <div className="text-center">
@@ -213,7 +239,81 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   return (
     <PullToRefresh onRefresh={handleRefresh}>
       <div className="w-full max-w-3xl mx-auto">
-      <div className="flex flex-row items-center justify-end gap-4 mb-6" style={{ marginTop: '0', paddingTop: '0' }}>
+      <div
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6"
+        style={{ marginTop: '0', paddingTop: '0' }}
+      >
+        {status === 'saved' && (
+          <div className="flex-1">
+            {/* Web segmented control (inline with sort) */}
+            <div className="hidden sm:flex items-center">
+              <div
+                className="inline-flex p-1 rounded border"
+                style={{
+                  backgroundColor: 'var(--theme-hover-bg)',
+                  borderColor: 'var(--theme-border)',
+                }}
+              >
+                {(['all', 'next', 'later', 'someday'] as const).map((value) => {
+                  const isActive = readingOrderFilter === value;
+                  const label =
+                    value === 'all'
+                      ? 'All'
+                      : value === 'next'
+                      ? 'Next'
+                      : value === 'later'
+                      ? 'Later'
+                      : 'Someday';
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => setReadingOrderFilter(value)}
+                      className="px-3 py-1.5 text-xs sm:text-sm rounded transition-colors"
+                      style={{
+                        backgroundColor: isActive ? 'var(--theme-card-bg)' : 'transparent',
+                        color: isActive ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mobile segmented pills (compact, same row) */}
+            <div className="sm:hidden -mx-2 px-2 overflow-x-auto">
+              <div className="flex items-center gap-2 py-1">
+                {(['all', 'next', 'later', 'someday'] as const).map((value) => {
+                  const isActive = readingOrderFilter === value;
+                  const label =
+                    value === 'all'
+                      ? 'All'
+                      : value === 'next'
+                      ? 'Next'
+                      : value === 'later'
+                      ? 'Later'
+                      : 'Someday';
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => setReadingOrderFilter(value)}
+                      className="px-3 py-1.5 text-xs rounded flex-shrink-0 transition-colors"
+                      style={{
+                        backgroundColor: isActive ? 'var(--theme-card-bg)' : 'var(--theme-hover-bg)',
+                        color: isActive ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-row items-center justify-end gap-4">
         {status === 'archived' && items.length > 0 && (
           <button
             onClick={handleDeleteAll}
@@ -287,17 +387,52 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
             </div>
           </div>
         </div>
+        </div>
       </div>
-      {items.map((item, index) => (
-        <FeedItemCard
-          key={item.id}
-          item={item}
-          onStatusChange={handleStatusChange}
-          scrollKey={scrollKey}
-          allItemIds={items.map(i => i.id)}
-          itemIndex={index}
-        />
-      ))}
+      {status === 'saved' && readingOrderFilter === 'all' && groupedByReadingOrder ? (
+        <>
+          {(['next', 'later', 'someday'] as const).map((order) => {
+            const groupItems = groupedByReadingOrder[order];
+            if (!groupItems || groupItems.length === 0) return null;
+            const label =
+              order === 'next' ? 'Next' : order === 'later' ? 'Later' : 'Someday';
+            return (
+              <div key={order}>
+                <h2
+                  className="text-base sm:text-lg leading-relaxed pt-6 pb-6 border-b mb-4 font-bold"
+                  style={{
+                    color: 'var(--theme-text-secondary)',
+                    borderColor: 'var(--theme-border)',
+                  }}
+                >
+                  {label}
+                </h2>
+                {groupItems.map((item) => (
+                  <FeedItemCard
+                    key={item.id}
+                    item={item}
+                    onStatusChange={handleStatusChange}
+                    scrollKey={scrollKey}
+                    allItemIds={allItemIds}
+                    itemIndex={items.findIndex((i) => i.id === item.id)}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </>
+      ) : (
+        displayedItems.map((item) => (
+          <FeedItemCard
+            key={item.id}
+            item={item}
+            onStatusChange={handleStatusChange}
+            scrollKey={scrollKey}
+            allItemIds={allItemIds}
+            itemIndex={items.findIndex((i) => i.id === item.id)}
+          />
+        ))
+      )}
     </div>
     </PullToRefresh>
   );

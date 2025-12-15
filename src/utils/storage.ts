@@ -267,6 +267,35 @@ export const storage = {
   },
 
   /**
+   * Update a feed item's reading order subcategory (next | later | someday | null)
+   * Does not change the item's primary status.
+   */
+  updateItemReadingOrder: async (
+    itemId: string,
+    readingOrder: 'next' | 'later' | 'someday' | null
+  ): Promise<FeedItem> => {
+    try {
+      const encodedId = encodeURIComponent(itemId);
+      const updated = await apiRequest<FeedItem>(`items/${encodedId}/reading-order`, {
+        method: 'POST',
+        body: JSON.stringify({ readingOrder }),
+      });
+
+      // Update local cache
+      const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      const updatedItems = items.map(item =>
+        item.id === itemId ? { ...item, readingOrder } : item
+      );
+      saveToLocalStorage(FEED_ITEMS_KEY, updatedItems);
+
+      return updated;
+    } catch (error) {
+      console.error('Failed to update item reading order:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Update a feed item's AI summary
    */
   updateItemSummary: async (itemId: string, summary: string): Promise<FeedItem> => {
