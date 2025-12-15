@@ -204,6 +204,14 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
         }
       : null;
 
+  // Find the first non-empty reading order group (for adding a top border)
+  const firstReadingOrderGroup =
+    groupedByReadingOrder
+      ? (['next', 'later', 'someday'] as const).find(
+          (order) => groupedByReadingOrder[order] && groupedByReadingOrder[order]!.length > 0,
+        ) || null
+      : null;
+
   // Only show "no items" message if we've attempted to load and items array is empty
   if (hasAttemptedLoad && items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
@@ -237,82 +245,13 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   }
 
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
+  <PullToRefresh onRefresh={handleRefresh}>
       <div className="w-full max-w-3xl mx-auto">
       <div
-        className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 mb-6"
+        className="flex flex-col gap-3 mb-6"
         style={{ marginTop: '0', paddingTop: '0' }}
       >
-        {status === 'saved' && (
-          <div className="w-full sm:w-auto">
-            {/* Web segmented control (inline with sort) */}
-            <div className="hidden sm:flex items-center">
-              <div
-                className="inline-flex px-1 py-0.5 rounded border"
-                style={{
-                  backgroundColor: 'var(--theme-hover-bg)',
-                  borderColor: 'var(--theme-border)',
-                }}
-              >
-                {(['all', 'next', 'later', 'someday'] as const).map((value) => {
-                  const isActive = readingOrderFilter === value;
-                  const label =
-                    value === 'all'
-                      ? 'All'
-                      : value === 'next'
-                      ? 'Next'
-                      : value === 'later'
-                      ? 'Later'
-                      : 'Someday';
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => setReadingOrderFilter(value)}
-                      className="px-3 py-1 text-xs sm:text-sm rounded transition-colors"
-                      style={{
-                        backgroundColor: isActive ? 'var(--theme-card-bg)' : 'transparent',
-                        color: isActive ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Mobile segmented pills (compact, same row) */}
-            <div className="sm:hidden -mx-2 px-2 overflow-x-auto">
-              <div className="flex items-center justify-end gap-2 py-1">
-                {(['all', 'next', 'later', 'someday'] as const).map((value) => {
-                  const isActive = readingOrderFilter === value;
-                  const label =
-                    value === 'all'
-                      ? 'All'
-                      : value === 'next'
-                      ? 'Next'
-                      : value === 'later'
-                      ? 'Later'
-                      : 'Someday';
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => setReadingOrderFilter(value)}
-                      className="px-3 py-1 text-xs rounded flex-shrink-0 transition-colors"
-                      style={{
-                        backgroundColor: isActive ? 'var(--theme-card-bg)' : 'var(--theme-hover-bg)',
-                        color: isActive ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
+        {/* First row: page actions (delete, sort) aligned right on all breakpoints */}
         <div className="flex flex-row items-center justify-end gap-4">
         {status === 'archived' && items.length > 0 && (
           <button
@@ -391,6 +330,38 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
           </div>
         </div>
         </div>
+
+        {/* Second row: reading order toggle (Later page only), left-aligned on all breakpoints */}
+        {status === 'saved' && (
+          <div className="-mx-2 px-2 sm:m-0 sm:px-0 overflow-x-auto">
+            <div className="flex items-center gap-2 py-1.5">
+              {(['all', 'next', 'later', 'someday'] as const).map((value) => {
+                const isActive = readingOrderFilter === value;
+                const label =
+                  value === 'all'
+                    ? 'All'
+                    : value === 'next'
+                    ? 'Next'
+                    : value === 'later'
+                    ? 'Later'
+                    : 'Someday';
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setReadingOrderFilter(value)}
+                    className="px-4 py-2 text-sm rounded flex-shrink-0 transition-colors"
+                    style={{
+                      backgroundColor: isActive ? 'var(--theme-button-bg)' : 'var(--theme-hover-bg)',
+                      color: isActive ? 'var(--theme-button-text)' : 'var(--theme-text-secondary)',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       {status === 'saved' && readingOrderFilter === 'all' && groupedByReadingOrder ? (
         <>
@@ -399,10 +370,13 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
             if (!groupItems || groupItems.length === 0) return null;
             const label =
               order === 'next' ? 'Next' : order === 'later' ? 'Later' : 'Someday';
+            const isFirstGroup = order === firstReadingOrderGroup;
             return (
               <div key={order}>
                 <h2
-                  className="text-base sm:text-lg leading-relaxed pt-6 pb-6 border-b mb-4 font-bold"
+                  className={`text-base sm:text-lg leading-relaxed pt-6 pb-6 border-b mb-4 font-bold ${
+                    isFirstGroup ? 'border-t' : ''
+                  }`}
                   style={{
                     color: 'var(--theme-text-secondary)',
                     borderColor: 'var(--theme-border)',
