@@ -183,8 +183,14 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
     return (
       <PullToRefresh onRefresh={handleRefresh}>
-        <div className="flex items-center justify-center h-64" style={{ color: 'var(--theme-text-muted)' }}>
-        <div className="text-center">
+        <div 
+          className="flex items-center justify-center w-full"
+          style={{ 
+            color: 'var(--theme-text-muted)',
+            minHeight: 'calc(100vh - 6rem)',
+          }}
+        >
+          <div className="text-center">
             <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No items found</p>
             <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
               {selectedFeed 
