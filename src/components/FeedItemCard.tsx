@@ -137,16 +137,6 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showReadingOrderMenu]);
 
-  const getEffectiveReadingOrder = () => {
-    if (item.status !== 'saved') return null;
-    if (item.readingOrder === 'next' || item.readingOrder === 'later' || item.readingOrder === 'someday') {
-      return item.readingOrder;
-    }
-    // Default existing saved items without a subcategory to "later" for filtering/grouping,
-    // but we only treat explicitly set values as "selected" in the UI.
-    return 'later' as const;
-  };
-
   const handleReadingOrderSelect = async (order: 'next' | 'later' | 'someday') => {
     const currentExplicit = item.status === 'saved' ? item.readingOrder || null : null;
     

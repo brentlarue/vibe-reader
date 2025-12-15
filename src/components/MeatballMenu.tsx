@@ -142,7 +142,7 @@ export default function MeatballMenu({
             left: menuPosition.left,
           }}
         >
-          {menuItems.map((item, index) => (
+          {menuItems.map((item) => (
             <button
               key={item.label}
               onClick={(e) => {
