@@ -358,6 +358,33 @@ app.post('/api/rss-proxy', requireAuth, async (req, res) => {
   }
 });
 
+// Helper function to count words in text
+function countWords(text) {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+}
+
+// Helper function to clean HTML and extract meaningful content
+function prepareArticleContent(text) {
+  // Remove HTML tags but preserve structure
+  let cleaned = text
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+    .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+  
+  // Remove common boilerplate patterns
+  cleaned = cleaned
+    .replace(/Subscribe\s+to\s+[^\s]+\s+newsletter/gi, '')
+    .replace(/Sign\s+up\s+for\s+[^\s]+\s+newsletter/gi, '')
+    .replace(/Follow\s+us\s+on\s+[^\s]+/gi, '')
+    .replace(/Share\s+this\s+article/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return cleaned;
+}
+
 // Summarize endpoint (protected)
 app.post('/api/summarize', requireAuth, async (req, res) => {
   try {
@@ -374,104 +401,140 @@ app.post('/api/summarize', requireAuth, async (req, res) => {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    // Limit content length to avoid token limits (approximately 4000 chars)
-    const truncatedContent = text.substring(0, 4000);
+    // Prepare and chunk content for better coverage
+    const cleanedContent = prepareArticleContent(text);
+    
+    // Use more content - aim for ~8000-10000 characters to get beyond intro paragraphs
+    // If content is longer, we'll send a larger chunk but still within token limits
+    const contentLength = cleanedContent.length;
+    const targetLength = Math.min(contentLength, 10000);
+    const articleContent = cleanedContent.substring(0, targetLength);
+    
+    // If we truncated, add a note to help the model understand context
+    const contentNote = contentLength > targetLength 
+      ? `\n\n[Note: Article continues beyond this point, but the above represents the core content.]`
+      : '';
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful assistant that creates concise, informative summaries. CRITICAL REQUIREMENTS: 1) Every summary MUST be COMPLETE and FINISHED - never truncate, never cut off mid-sentence, never end with ellipses (...). 2) The summary must end naturally with proper punctuation (period, exclamation mark, or question mark). 3) The summary must read as a complete, coherent piece of writing. 4) Do NOT indicate truncation or that the summary is incomplete in any way.',
-          },
-          {
-            role: 'user',
-            content: `Write a complete, finished summary of the following article. Capture the main points and key information.
+    const systemMessage = `You are an expert article summarizer for a high-signal RSS reader.
 
-CRITICAL REQUIREMENTS:
-1. Your summary MUST be COMPLETE and FINISHED - never truncate, never cut off mid-sentence, never use ellipses (...)
-2. Your summary MUST be EXACTLY 360 characters or fewer (this is a CHARACTER limit, including spaces and punctuation). DO NOT exceed 360 characters.
-3. The summary must end naturally with proper punctuation (period, exclamation, or question mark)
-4. The summary must read as a complete, coherent paragraph
+Write clear, information-dense summaries for busy, thoughtful readers.
 
-CHARACTER LIMIT: 360 characters maximum (not 280, not 300, not 350 - exactly 360 characters or fewer).
+Rules:
+- Summarize the entire article, not just the introduction.
+- Do NOT repeat the title or use phrases like "this article discusses."
+- Do NOT use ellipses, meta commentary, or filler.
+- Write in direct, factual prose.
+- The summary must be a complete paragraph that ends with proper punctuation.
+- If the content appears truncated or paywalled, still summarize what is present without mentioning the limitation.`;
 
-Write your complete, finished summary within 360 characters:\n\n${truncatedContent}`,
-          },
-        ],
-        max_tokens: 900,
-        temperature: 0.7,
-      }),
-    });
+    const userMessage = `Write a single-paragraph summary of the article below.
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('OpenAI API error:', response.status, errorData);
-      throw new Error(`OpenAI API error: ${response.status} ${errorData.error?.message || response.statusText}`);
-    }
+Constraints:
+- Length: 80–100 words (hard requirement).
+- One paragraph only.
+- No bullet points.
+- No title repetition.
+- No meta language.
+- Must read as a complete, polished paragraph.
 
-    const data = await response.json();
-    let summary = data.choices?.[0]?.message?.content?.trim();
+Article content:
+${articleContent}${contentNote}`;
+
+    // Function to call OpenAI API
+    const callOpenAI = async (messages) => {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o', // GPT-4 class model (latest and best available)
+          messages,
+          max_tokens: 700, // Increased for 120-140 word summaries
+          temperature: 0.2,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('OpenAI API error:', response.status, errorData);
+        throw new Error(`OpenAI API error: ${response.status} ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content?.trim();
+    };
+
+    // Initial summary generation
+    let summary = await callOpenAI([
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: userMessage },
+    ]);
 
     if (!summary) {
       throw new Error('No summary returned from API');
     }
 
-    // Debug: Log the raw summary from LLM
-    console.log('LLM raw response - Length (characters):', summary.length);
-    console.log('LLM raw response text:', summary);
+    // Clean up the summary
+    summary = summary
+      .replace(/\s*\(?\d+\s*(word|words?)\)?/gi, '') // Remove word count mentions
+      .replace(/\s*\[\d+\s*(word|words?)\]/gi, '') // Remove word count in brackets
+      .replace(/\.{2,}$/, '') // Remove trailing ellipses
+      .replace(/\s*\.{3,}\s*/g, ' ') // Remove ellipses in middle
+      .trim();
 
-    // Remove any character count mentions or metadata from the summary
-    // Remove patterns like "(360 chars)", "[360 characters]", etc.
-    summary = summary.replace(/\s*\(?\d+\s*(char|characters?|chars?)\)?/gi, '').trim();
-    summary = summary.replace(/\s*\[\d+\s*(char|characters?|chars?)\]/gi, '').trim();
-    
-    // Remove trailing ellipses if LLM added them despite instructions
-    summary = summary.replace(/\.{2,}$/, '').trim();
-    // Remove any ellipses in the middle or at the end
-    summary = summary.replace(/\s*\.{3,}\s*/g, ' ').trim();
+    // Validate word count and quality
+    const wordCount = countWords(summary);
+    const endsProperly = /[.!?]$/.test(summary.trim());
+    const isSingleParagraph = !summary.includes('\n\n') && (summary.split('\n').length <= 2);
 
-    // Ensure summary is within 360 character limit
-    // This should rarely be needed if the LLM follows the prompt correctly
-    if (summary.length > 360) {
-      console.warn(`WARNING: Summary exceeds 360 character limit (${summary.length} chars). LLM did not follow character limit instruction.`);
-      // Try to find a sentence boundary within the limit
-      const trimmed = summary.substring(0, 360);
-      const lastPeriod = trimmed.lastIndexOf('.');
-      const lastExclamation = trimmed.lastIndexOf('!');
-      const lastQuestion = trimmed.lastIndexOf('?');
-      const lastSentenceEnd = Math.max(lastPeriod, lastExclamation, lastQuestion);
-      
-      if (lastSentenceEnd > 300) {
-        // Found a sentence end reasonably close to the limit
-        summary = summary.substring(0, lastSentenceEnd + 1).trim();
-        console.warn(`Summary trimmed to sentence boundary: ${summary.length} characters`);
-      } else {
-        // No good sentence boundary, trim at word boundary
-        const lastSpace = trimmed.lastIndexOf(' ');
-        if (lastSpace > 300) {
-          summary = summary.substring(0, lastSpace).trim() + '.';
-          console.warn(`Summary trimmed to word boundary: ${summary.length} characters`);
-        } else {
-          // Last resort: hard cut (should never happen with proper prompt)
-          summary = summary.substring(0, 357).trim() + '...';
-          console.warn(`Summary hard-trimmed (last resort): ${summary.length} characters`);
-        }
+    // If validation fails, request a revision
+    if (wordCount < 80 || wordCount > 100 || !endsProperly || !isSingleParagraph) {
+      console.log(`Summary validation failed: ${wordCount} words, ends properly: ${endsProperly}, single paragraph: ${isSingleParagraph}`);
+      console.log('Requesting revision from model...');
+
+      const revisionMessage = `The summary you provided does not meet the requirements. Please revise it.
+
+Issues found:
+${wordCount < 80 ? `- Too short: ${wordCount} words (need 80-100 words)\n` : ''}${wordCount > 100 ? `- Too long: ${wordCount} words (need 80-100 words)\n` : ''}${!endsProperly ? '- Does not end with proper punctuation\n' : ''}${!isSingleParagraph ? '- Not a single paragraph\n' : ''}
+
+Current summary:
+${summary}
+
+Please provide a revised summary that:
+- Is exactly 80-100 words
+- Is a single paragraph
+- Ends with proper punctuation
+- Is complete and polished`;
+
+      summary = await callOpenAI([
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: summary },
+        { role: 'user', content: revisionMessage },
+      ]);
+
+      if (!summary) {
+        throw new Error('No revised summary returned from API');
       }
+
+      // Clean revised summary
+      summary = summary
+        .replace(/\s*\(?\d+\s*(word|words?)\)?/gi, '')
+        .replace(/\s*\[\d+\s*(word|words?)\]/gi, '')
+        .replace(/\.{2,}$/, '')
+        .replace(/\s*\.{3,}\s*/g, ' ')
+        .trim();
+
+      const finalWordCount = countWords(summary);
+      console.log(`Revised summary: ${finalWordCount} words`);
     }
 
-    // Debug: Log the cleaned summary being sent
-    console.log('LLM cleaned summary - Length (characters):', summary.length);
-    console.log('LLM cleaned summary text:', summary);
-    if (summary.length > 360) {
-      console.warn('WARNING: Summary still exceeds 360 character limit after processing!');
-    }
+    // Final validation log
+    const finalWordCount = countWords(summary);
+    console.log(`Final summary: ${finalWordCount} words, ${summary.length} characters`);
+    console.log(`Summary text: ${summary}`);
 
     return res.json({ summary });
   } catch (error) {
