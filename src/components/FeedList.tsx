@@ -240,15 +240,15 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     <PullToRefresh onRefresh={handleRefresh}>
       <div className="w-full max-w-3xl mx-auto">
       <div
-        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6"
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 mb-6"
         style={{ marginTop: '0', paddingTop: '0' }}
       >
         {status === 'saved' && (
-          <div className="flex-1">
+          <div className="w-full sm:w-auto">
             {/* Web segmented control (inline with sort) */}
             <div className="hidden sm:flex items-center">
               <div
-                className="inline-flex p-1 rounded border"
+                className="inline-flex px-1 py-0.5 rounded border"
                 style={{
                   backgroundColor: 'var(--theme-hover-bg)',
                   borderColor: 'var(--theme-border)',
@@ -268,7 +268,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
                     <button
                       key={value}
                       onClick={() => setReadingOrderFilter(value)}
-                      className="px-3 py-1.5 text-xs sm:text-sm rounded transition-colors"
+                      className="px-3 py-1 text-xs sm:text-sm rounded transition-colors"
                       style={{
                         backgroundColor: isActive ? 'var(--theme-card-bg)' : 'transparent',
                         color: isActive ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
@@ -283,7 +283,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
 
             {/* Mobile segmented pills (compact, same row) */}
             <div className="sm:hidden -mx-2 px-2 overflow-x-auto">
-              <div className="flex items-center gap-2 py-1">
+              <div className="flex items-center justify-end gap-2 py-1">
                 {(['all', 'next', 'later', 'someday'] as const).map((value) => {
                   const isActive = readingOrderFilter === value;
                   const label =
@@ -298,7 +298,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
                     <button
                       key={value}
                       onClick={() => setReadingOrderFilter(value)}
-                      className="px-3 py-1.5 text-xs rounded flex-shrink-0 transition-colors"
+                      className="px-3 py-1 text-xs rounded flex-shrink-0 transition-colors"
                       style={{
                         backgroundColor: isActive ? 'var(--theme-card-bg)' : 'var(--theme-hover-bg)',
                         color: isActive ? 'var(--theme-text)' : 'var(--theme-text-secondary)',
@@ -345,8 +345,11 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
           </button>
         )}
         <div className="flex items-center gap-2" style={{ marginTop: '0' }}>
-          <label htmlFor="sort-order" className="text-xs sm:text-sm" style={{ color: 'var(--theme-text-secondary)' }}>
-            Sort:
+          <label
+            htmlFor="sort-order"
+            className="text-xs sm:text-sm sr-only"
+          >
+            Sort order
           </label>
           <div className="relative">
             <select
