@@ -363,25 +363,389 @@ function countWords(text) {
   return text.trim().split(/\s+/).filter(word => word.length > 0).length;
 }
 
-// Helper function to clean HTML and extract meaningful content
+/**
+ * Comprehensive article content cleaner that removes junk content after the true editorial end.
+ * Uses deterministic, rule-based heuristics only (no LLM).
+ * 
+ * Strategy:
+ * 1. Parse HTML structure to identify content blocks
+ * 2. Apply text-pattern stop conditions
+ * 3. Use link-density heuristics
+ * 4. Apply length-based cutoff
+ * 5. Detect platform-specific patterns
+ * 
+ * Quality bar: If a human would say "this is clearly not part of the article," it's removed.
+ * When ambiguous, prefer keeping content rather than cutting early.
+ * 
+ * TEST CASES:
+ * 
+ * 1. Stop at "Related" section:
+ *    Input: "<p>Article content here.</p><h2>Related</h2><p>More articles...</p>"
+ *    Expected: "<p>Article content here.</p>"
+ * 
+ * 2. Stop at subscription CTA:
+ *    Input: "<p>Article ends here.</p><p>Subscribe to our newsletter</p>"
+ *    Expected: "<p>Article ends here.</p>"
+ * 
+ * 3. Stop at high link density:
+ *    Input: "<p>Article content.</p><div><a>Link 1</a> <a>Link 2</a> <a>Link 3</a></div>"
+ *    Expected: "<p>Article content.</p>" (if after MIN_ARTICLE_LENGTH)
+ * 
+ * 4. Preserve legitimate conclusion:
+ *    Input: "<p>Main content.</p><p>In conclusion, this is important.</p><p>Subscribe</p>"
+ *    Expected: "<p>Main content.</p><p>In conclusion, this is important.</p>"
+ * 
+ * 5. Platform-specific (Substack):
+ *    Input: "<p>Article.</p><p>Become a paid subscriber to read more.</p>"
+ *    Expected: "<p>Article.</p>"
+ */
 function prepareArticleContent(text) {
-  // Remove HTML tags but preserve structure
-  let cleaned = text
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
-    .replace(/<[^>]+>/g, ' ') // Remove HTML tags
-    .replace(/\s+/g, ' ') // Normalize whitespace
-    .trim();
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+
+  // Step 1: Remove scripts, styles, and other non-content elements
+  let html = text
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, ''); // Remove comments
+
+  // Step 2: Split HTML into blocks (paragraphs, divs, sections, etc.)
+  // We'll process blocks sequentially and stop when we hit junk patterns
+  const blockPattern = /<(?:p|div|section|article|main|h[1-6]|li|blockquote|aside|footer|header)[^>]*>[\s\S]*?<\/(?:p|div|section|article|main|h[1-6]|li|blockquote|aside|footer|header)>/gi;
+  const blocks = [];
+  let match;
   
-  // Remove common boilerplate patterns
-  cleaned = cleaned
-    .replace(/Subscribe\s+to\s+[^\s]+\s+newsletter/gi, '')
-    .replace(/Sign\s+up\s+for\s+[^\s]+\s+newsletter/gi, '')
-    .replace(/Follow\s+us\s+on\s+[^\s]+/gi, '')
-    .replace(/Share\s+this\s+article/gi, '')
+  // Extract all content blocks
+  while ((match = blockPattern.exec(html)) !== null) {
+    blocks.push(match[0]);
+  }
+  
+  // Track if we found structured blocks
+  const hasStructuredBlocks = blocks.length > 0;
+  
+  // If no structured blocks found, treat entire content as one block for processing
+  if (!hasStructuredBlocks) {
+    blocks.push(html);
+  }
+
+  // Step 3: Process blocks sequentially, stopping at junk patterns
+  const cleanedBlocks = [];
+  let foundStopMarker = false;
+  let totalLength = 0;
+  const MIN_ARTICLE_LENGTH = 800; // Minimum characters before we start being aggressive about cutting
+  const MAX_ARTICLE_LENGTH = 50000; // Reasonable upper bound
+
+  for (let i = 0; i < blocks.length && !foundStopMarker; i++) {
+    const block = blocks[i];
+    const blockText = stripHtmlTags(block).trim();
+    
+    if (!blockText || blockText.length < 10) {
+      // Skip very short blocks (likely formatting/spacing)
+      continue;
+    }
+
+    // Check for stop markers (text patterns that indicate end of article)
+    if (isStopMarker(blockText, block)) {
+      foundStopMarker = true;
+      break;
+    }
+
+    // Check link density - if block is >50% links, it's likely junk (unless early in article)
+    if (totalLength > MIN_ARTICLE_LENGTH && isHighLinkDensity(block)) {
+      foundStopMarker = true;
+      break;
+    }
+
+    // Check for platform-specific patterns
+    if (hasPlatformJunkPattern(blockText, block)) {
+      foundStopMarker = true;
+      break;
+    }
+
+    // Length-based cutoff: if we have substantial content and remaining blocks are short/CTA-heavy
+    if (totalLength > MIN_ARTICLE_LENGTH && i > blocks.length * 0.7) {
+      // We're in the latter portion of content
+      if (isLikelyJunkBlock(blockText, block)) {
+        foundStopMarker = true;
+        break;
+      }
+    }
+
+    // Add block to cleaned content
+    cleanedBlocks.push(block);
+    totalLength += blockText.length;
+
+    // Safety: don't process extremely long articles
+    if (totalLength > MAX_ARTICLE_LENGTH) {
+      break;
+    }
+  }
+
+  // Step 4: Reconstruct cleaned HTML
+  let cleanedHtml;
+  
+  // If we didn't find structured blocks, use fallback approach with stop markers
+  if (!hasStructuredBlocks) {
+    cleanedHtml = applyStopMarkersToPlainText(html);
+  } else {
+    cleanedHtml = cleanedBlocks.join('\n');
+  }
+
+  // Step 5: Final cleanup - remove remaining junk patterns
+  cleanedHtml = removeJunkPatterns(cleanedHtml);
+
+  // Step 6: Strip HTML tags for final text output (preserve structure info was used during processing)
+  let cleaned = stripHtmlTags(cleanedHtml)
     .replace(/\s+/g, ' ')
     .trim();
+
+  return cleaned;
+}
+
+/**
+ * Strip HTML tags from text, preserving text content
+ */
+function stripHtmlTags(html) {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Check if a block matches stop marker patterns (indicating end of article)
+ */
+function isStopMarker(text, htmlBlock) {
+  const normalizedText = text.toLowerCase().trim();
   
+  // Stop marker patterns (case-insensitive)
+  const stopPatterns = [
+    /^(related|more from|more like this|recommended|read more|you might also like|similar articles|trending now)$/i,
+    /^(subscribe|sign up|become a member|join the newsletter|get the newsletter|newsletter signup)$/i,
+    /^(comments|discussion|join the conversation|leave a comment)$/i,
+    /^(share this|share on|tweet this|follow us|follow me)$/i,
+    /^(about the author|author bio|meet the author|author information)$/i,
+    /^(published by|published on|posted by|posted on)$/i,
+    /^(member-only|continue reading|this post is for subscribers|upgrade to paid|become a paid subscriber)$/i,
+    /^(listen instead|listen to this|audio version)$/i,
+    /^(cookie|privacy|terms of service|terms and conditions)$/i,
+    /^(donate|support us|contribute|sponsor)$/i,
+  ];
+
+  // Check if text matches any stop pattern
+  for (const pattern of stopPatterns) {
+    if (pattern.test(normalizedText)) {
+      return true;
+    }
+  }
+
+  // Check if block contains stop marker phrases (not just exact match)
+  const stopPhrases = [
+    'related stories',
+    'related articles',
+    'more from',
+    'more like this',
+    'recommended for you',
+    'you might also like',
+    'subscribe to',
+    'sign up for',
+    'become a member',
+    'join the newsletter',
+    'about the author',
+    'author bio',
+    'share this article',
+    'share on twitter',
+    'share on linkedin',
+    'follow us on',
+    'comments section',
+    'leave a comment',
+    'join the discussion',
+    'member-only',
+    'continue reading',
+    'this post is for subscribers',
+    'upgrade to paid',
+    'listen instead',
+    'cookie policy',
+    'privacy policy',
+    'support our work',
+    'donate to',
+  ];
+
+  for (const phrase of stopPhrases) {
+    if (normalizedText.includes(phrase.toLowerCase())) {
+      // Only stop if this phrase appears prominently (not buried in legitimate content)
+      // Check if it's in a heading or at the start of a paragraph
+      if (htmlBlock.match(new RegExp(`<(h[1-6]|p|div|section)[^>]*>[^<]*${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'))) {
+        return true;
+      }
+      // Or if it's a short block that's mostly this phrase
+      if (text.length < 200 && normalizedText.indexOf(phrase.toLowerCase()) < 50) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a block has high link density (likely navigation/junk)
+ */
+function isHighLinkDensity(htmlBlock) {
+  // Count link characters vs total characters
+  const linkMatches = htmlBlock.match(/<a[^>]*>[\s\S]*?<\/a>/gi);
+  if (!linkMatches) {
+    return false;
+  }
+
+  let linkTextLength = 0;
+  linkMatches.forEach(link => {
+    linkTextLength += stripHtmlTags(link).length;
+  });
+
+  const totalTextLength = stripHtmlTags(htmlBlock).length;
+  
+  if (totalTextLength === 0) {
+    return false;
+  }
+
+  const linkDensity = linkTextLength / totalTextLength;
+  
+  // If >50% of text is links, it's likely junk
+  if (linkDensity > 0.5) {
+    return true;
+  }
+
+  // If block is primarily a list of links (multiple links, short text)
+  if (linkMatches.length >= 3 && totalTextLength < 500) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Check for platform-specific junk patterns
+ */
+function hasPlatformJunkPattern(text, htmlBlock) {
+  const normalizedText = text.toLowerCase();
+  const normalizedHtml = htmlBlock.toLowerCase();
+
+  // Medium patterns
+  if (normalizedHtml.includes('medium.com') || normalizedHtml.includes('getpocket.com')) {
+    if (normalizedText.includes('member-only') || normalizedText.includes('upgrade to')) {
+      return true;
+    }
+  }
+
+  // Substack patterns
+  if (normalizedHtml.includes('substack.com') || normalizedText.includes('substack')) {
+    if (normalizedText.includes('subscribe') || normalizedText.includes('become a paid subscriber')) {
+      return true;
+    }
+  }
+
+  // Ghost patterns
+  if (normalizedHtml.includes('ghost.org') || normalizedText.includes('ghost')) {
+    if (normalizedText.includes('members only') || normalizedText.includes('upgrade')) {
+      return true;
+    }
+  }
+
+  // WordPress patterns
+  if (normalizedHtml.includes('wordpress.com') || normalizedHtml.includes('wp-content')) {
+    // WordPress often has "related posts" plugins
+    if (normalizedText.match(/related\s+(posts|articles|content)/i)) {
+      return true;
+    }
+  }
+
+  // Generic "continue reading" patterns
+  if (normalizedText.match(/continue\s+reading|read\s+more|show\s+more/i)) {
+    // Only if it's a short block (likely a CTA)
+    if (text.length < 100) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a block is likely junk based on characteristics
+ */
+function isLikelyJunkBlock(text, htmlBlock) {
+  const normalizedText = text.toLowerCase();
+
+  // Very short blocks in the latter portion are often junk
+  if (text.length < 50) {
+    // Unless it's clearly a paragraph ending
+    if (!text.match(/[.!?]\s*$/)) {
+      return true;
+    }
+  }
+
+  // Blocks that are mostly CTAs
+  const ctaPatterns = [
+    /click here/i,
+    /learn more/i,
+    /get started/i,
+    /try now/i,
+    /download/i,
+    /install/i,
+  ];
+
+  for (const pattern of ctaPatterns) {
+    if (pattern.test(text) && text.length < 200) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Apply stop markers to plain text (fallback when no structured HTML)
+ */
+function applyStopMarkersToPlainText(text) {
+  // Split by common separators (paragraph breaks, line breaks)
+  const paragraphs = text.split(/\n\s*\n|<\/p>\s*<p>|<\/div>\s*<div>/i);
+  
+  let cleaned = '';
+  for (const para of paragraphs) {
+    const paraText = stripHtmlTags(para).trim();
+    
+    if (isStopMarker(paraText, para)) {
+      break;
+    }
+    
+    cleaned += para + '\n\n';
+  }
+  
+  return cleaned;
+}
+
+/**
+ * Remove remaining junk patterns from cleaned HTML
+ */
+function removeJunkPatterns(html) {
+  // Remove common boilerplate patterns that might have slipped through
+  let cleaned = html;
+
+  // Remove subscription CTAs
+  cleaned = cleaned.replace(/<[^>]*>[\s\S]*?subscribe\s+to\s+[^\s]+\s+newsletter[\s\S]*?<\/[^>]*>/gi, '');
+  cleaned = cleaned.replace(/<[^>]*>[\s\S]*?sign\s+up\s+for\s+[^\s]+\s+newsletter[\s\S]*?<\/[^>]*>/gi, '');
+  
+  // Remove social sharing prompts
+  cleaned = cleaned.replace(/<[^>]*>[\s\S]*?share\s+(this|on|via)[\s\S]*?<\/[^>]*>/gi, '');
+  cleaned = cleaned.replace(/<[^>]*>[\s\S]*?follow\s+us\s+on[\s\S]*?<\/[^>]*>/gi, '');
+  
+  // Remove cookie/privacy notices
+  cleaned = cleaned.replace(/<[^>]*>[\s\S]*?cookie\s+(policy|notice|consent)[\s\S]*?<\/[^>]*>/gi, '');
+  cleaned = cleaned.replace(/<[^>]*>[\s\S]*?privacy\s+(policy|notice)[\s\S]*?<\/[^>]*>/gi, '');
+
   return cleaned;
 }
 
