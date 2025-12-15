@@ -566,36 +566,61 @@ app.post('/api/ai-feature', requireAuth, async (req, res) => {
     // Limit content length to avoid token limits
     const truncatedContent = text.substring(0, 4000);
 
+    // Define system prompts for each feature type
+    const systemPrompts = {
+      'insightful-reply': `You write with the intellectual style of Paul Graham and Keith Rabois, but in a more casual, human tone.
+
+From Paul Graham, you take:
+- idea-first thinking
+- quiet humility
+- curiosity about how systems actually work
+- comfort with subtle, non-obvious truths
+
+From Keith Rabois, you take:
+- clarity about incentives and mechanics
+- comfort naming tradeoffs and failure modes
+- precision without verbosity
+
+You do NOT imitate their writing style.
+You internalize their way of reasoning.
+
+You sound like a thoughtful founder reflecting honestly, not delivering a thesis.
+You value correctness over cleverness.
+You avoid hype, slogans, and performative confidence.`,
+      'investor-analysis': 'You are a helpful assistant that provides insightful, practical analysis. Write clear, complete responses that directly address the request.',
+      'founder-implications': 'You are a helpful assistant that provides insightful, practical analysis. Write clear, complete responses that directly address the request.',
+    };
+
     // Define prompts for each feature type
     const prompts = {
-      'insightful-reply': `Craft a succinct, high-signal insight for a repost reply (usable on LinkedIn or Twitter).
+      'insightful-reply': `Write a repost reply suitable for Twitter or LinkedIn.
 
-Style:
+Constraints:
+- 1–2 sentences
+- Maximum 280 characters
+- No hashtags, no emojis, no quotation marks
+- Do not summarize the article
+- Do not restate the article's premise
+- Do not use framing like "this article shows" or "this piece argues"
 
-Paul Graham: observational, idea-driven, understated, humble
+What to do instead:
+- Surface one non-obvious implication the article creates
+- Focus on incentives, second-order effects, or structural dynamics
+- Let the insight feel discovered, not announced
+- It's okay to sound slightly conversational or tentative
 
-Keith Rabois: concise, diagnostic, reveals underlying mechanics
+Tone guidance:
+- Calm, reflective, grounded
+- Light humility
+- Avoid punchlines or viral framing
 
-My perspective: YC founder, Olympian, designer, product leader, systems-thinker, interested in performance, incentives, human behavior, automation, systems thinking and contrarian viewpoints—but keep this subtle.
+Audience:
+Founders, investors, PMs, designers, and engineers.
+Mostly SF Bay Area, Switzerland, and Slovenia.
 
-Rules:
-
-Do not summarize the article.
-
-Surface a non-obvious idea or structural insight the article implies.
-
-Tone: quiet confidence, analytical simplicity; no flourish, no jargon.
-
-STRICTLY NO hashtags. NO emojis. Do NOT wrap the response in quotes or quotation marks.
-
-1–2 sentences max.
-
-≤ 280 characters.
-
-Output ONLY the response text, with no quotes, no hashtags, no emojis.
+Output ONLY the final text.
 
 ARTICLE:
-
 ${truncatedContent}`,
 
       'investor-analysis': `Provide an investor-grade analysis of the article's thesis from the perspective of top VC firms in Silicon Valley (like Sequoia, Andreessen Horowitz, Benchmark, First Round Capital, etc.). Write in five sections:
@@ -645,7 +670,27 @@ ARTICLE:
 ${truncatedContent}`
     };
 
-    const systemPrompt = 'You are a helpful assistant that provides insightful, practical analysis. Write clear, complete responses that directly address the request.';
+    // Configure model and parameters per feature type
+    const modelConfig = {
+      'insightful-reply': {
+        model: 'gpt-4o', // GPT-4 class model
+        temperature: 0.4,
+        max_tokens: 1000,
+      },
+      'investor-analysis': {
+        model: 'gpt-3.5-turbo',
+        temperature: 0.7,
+        max_tokens: 1200,
+      },
+      'founder-implications': {
+        model: 'gpt-3.5-turbo',
+        temperature: 0.7,
+        max_tokens: 1200,
+      },
+    };
+
+    const config = modelConfig[featureType];
+    const systemPrompt = systemPrompts[featureType];
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -654,7 +699,7 @@ ${truncatedContent}`
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: config.model,
         messages: [
           {
             role: 'system',
@@ -665,8 +710,8 @@ ${truncatedContent}`
             content: prompts[featureType],
           },
         ],
-        max_tokens: 1200,
-        temperature: 0.7,
+        max_tokens: config.max_tokens,
+        temperature: config.temperature,
       }),
     });
 
@@ -683,12 +728,8 @@ ${truncatedContent}`
       throw new Error('No result returned from API');
     }
 
-    // For insightful-reply: remove quotes and hashtags
+    // For insightful-reply: only trim whitespace (no other post-processing)
     if (featureType === 'insightful-reply') {
-      // Remove surrounding quotes
-      result = result.replace(/^["']|["']$/g, '');
-      // Remove hashtags
-      result = result.replace(/#\w+/g, '');
       result = result.trim();
     }
 
