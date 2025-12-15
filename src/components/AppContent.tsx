@@ -150,7 +150,7 @@ function AppContent({
         </Routes>
       </main>
       
-      {/* Back to top button - only visible in standalone/PWA mode */}
+      {/* Back to top button */}
       <BackToTop />
     </div>
   );

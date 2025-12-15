@@ -3,44 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 export default function BackToTop() {
   const [isVisible, setIsVisible] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
   const location = useLocation();
-
-  // Detect standalone/PWA mode
-  useEffect(() => {
-    // Check if running in standalone mode (PWA/home screen app)
-    const checkStandalone = () => {
-      // Method 1: Check display-mode media query
-      if (window.matchMedia('(display-mode: standalone)').matches) {
-        setIsStandalone(true);
-        return;
-      }
-      
-      // Method 2: Check if running in iOS standalone mode
-      // @ts-ignore - navigator.standalone is iOS-specific
-      if (window.navigator.standalone === true) {
-        setIsStandalone(true);
-        return;
-      }
-      
-      // Method 3: Check if running in Android standalone mode
-      if (window.matchMedia('(display-mode: fullscreen)').matches) {
-        setIsStandalone(true);
-        return;
-      }
-      
-      setIsStandalone(false);
-    };
-
-    checkStandalone();
-    
-    // Listen for changes (e.g., if user adds to home screen while app is open)
-    const mediaQuery = window.matchMedia('(display-mode: standalone)');
-    const handleChange = () => checkStandalone();
-    mediaQuery.addEventListener('change', handleChange);
-    
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
 
   // Show/hide button based on scroll position
   useEffect(() => {
@@ -73,18 +36,24 @@ export default function BackToTop() {
     }
   };
 
-  // Don't show on article pages (they have the "next" button)
-  const isArticlePage = location.pathname.startsWith('/article');
-
-  // Only show in standalone mode and when scrolled down
-  if (!isStandalone || !isVisible || isArticlePage) {
+  // Only show when scrolled down
+  if (!isVisible) {
     return null;
   }
+
+  const isArticlePage = location.pathname.startsWith('/article');
+  
+  // On article pages, stack above the next button (which is at bottom-8 right-6)
+  // On other pages, use the same position as the next button would be
+  const bottomClass = isArticlePage 
+    ? 'bottom-20 sm:bottom-24' // Stacked above next button
+    : 'bottom-8 sm:bottom-10';  // Same position as next button
+  const rightClass = 'right-6 sm:right-8';
 
   return (
     <button
       onClick={scrollToTop}
-      className="fixed bottom-8 left-6 sm:bottom-10 sm:left-8 z-30 p-2 rounded transition-colors touch-manipulation"
+      className={`fixed ${bottomClass} ${rightClass} z-30 p-2 rounded transition-colors touch-manipulation`}
       style={{
         color: 'var(--theme-text-muted)',
         backgroundColor: 'var(--theme-card-bg)',
