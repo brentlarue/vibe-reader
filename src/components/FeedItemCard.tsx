@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { storage } from '../utils/storage';
 import Toast from './Toast';
 import ShareModal from './ShareModal';
+import MeatballMenu from './MeatballMenu';
 
 // Session storage key for navigation context
 const NAV_CONTEXT_KEY = 'articleNavContext';
@@ -42,8 +43,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     if (confirm('Are you sure you want to delete this item?')) {
       await storage.removeFeedItem(item.id);
     onStatusChange();
@@ -52,8 +55,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     }
   };
 
-  const handleCopyLink = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCopyLink = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     try {
       await navigator.clipboard.writeText(item.url);
       setShowToast(true);
@@ -76,8 +81,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     }
   };
 
-  const handleShare = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleShare = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     if (isIOS() && navigator.share) {
       try {
         await navigator.share({
@@ -280,57 +287,13 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
           </svg>
         </button>
-        <button
-          onClick={handleCopyLink}
-          className="transition-colors touch-manipulation p-2 -ml-2"
-          style={{ color: 'var(--theme-text-muted)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text-muted)';
-          }}
-          title="Copy Link"
-          aria-label="Copy Link"
-        >
-          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-        </button>
-        <button
-          onClick={handleShare}
-          className="transition-colors touch-manipulation p-2 -ml-2"
-          style={{ color: 'var(--theme-text-muted)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text-muted)';
-          }}
-          title="Share"
-          aria-label="Share"
-        >
-          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-          </svg>
-        </button>
-        <button
-          onClick={handleDelete}
-          className="transition-colors touch-manipulation p-2 -ml-2"
-          style={{ color: 'var(--theme-text-muted)' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#dc2626';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--theme-text-muted)';
-          }}
-          title="Delete"
-          aria-label="Delete"
-        >
-          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+        <MeatballMenu
+          onCopyLink={handleCopyLink}
+          onShare={handleShare}
+          onDelete={handleDelete}
+          buttonClassName="-ml-2"
+          iconClassName="w-5 h-5 sm:w-4 sm:h-4"
+        />
       </div>
       {showToast && (
         <Toast
