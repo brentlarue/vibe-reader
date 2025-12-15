@@ -78,11 +78,78 @@ export default function ArticleActionBar({ item, onStatusChange, onDelete, onAdd
   // Calculate reading order menu position when opening
   useEffect(() => {
     if (showReadingOrderMenu && readingOrderButtonRef.current) {
-      const rect = readingOrderButtonRef.current.getBoundingClientRect();
-      setReadingOrderMenuPosition({
-        top: rect.bottom + 8, // 8px gap below button
-        left: rect.left,
-      });
+      const updatePosition = () => {
+        if (!readingOrderButtonRef.current) return;
+        
+        const buttonRect = readingOrderButtonRef.current.getBoundingClientRect();
+        const gap = 8;
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        
+        // Estimate menu height (3 items × ~40px each + padding)
+        const estimatedMenuHeight = 130;
+        const estimatedMenuWidth = 140;
+        
+        // Check if menu would overflow bottom of viewport
+        const wouldOverflowBottom = buttonRect.bottom + gap + estimatedMenuHeight > viewportHeight;
+        
+        // Position above if it would overflow, otherwise below
+        let top = wouldOverflowBottom
+          ? buttonRect.top - estimatedMenuHeight - gap
+          : buttonRect.bottom + gap;
+        
+        // Ensure menu doesn't go above viewport
+        top = Math.max(gap, top);
+        
+        // Handle horizontal overflow - align right edge if menu would overflow
+        let left = buttonRect.left;
+        if (left + estimatedMenuWidth > viewportWidth) {
+          left = viewportWidth - estimatedMenuWidth - gap;
+        }
+        left = Math.max(gap, left);
+        
+        setReadingOrderMenuPosition({
+          top,
+          left,
+        });
+      };
+      
+      // Initial position calculation
+      updatePosition();
+      
+      // Recalculate after menu is rendered to get actual height
+      const timeoutId = setTimeout(() => {
+        if (readingOrderMenuRef.current && readingOrderButtonRef.current) {
+          const buttonRect = readingOrderButtonRef.current.getBoundingClientRect();
+          const menuHeight = readingOrderMenuRef.current.offsetHeight;
+          const menuWidth = readingOrderMenuRef.current.offsetWidth;
+          const gap = 8;
+          const viewportHeight = window.innerHeight;
+          const viewportWidth = window.innerWidth;
+          
+          const wouldOverflowBottom = buttonRect.bottom + gap + menuHeight > viewportHeight;
+          
+          let top = wouldOverflowBottom
+            ? buttonRect.top - menuHeight - gap
+            : buttonRect.bottom + gap;
+          
+          top = Math.max(gap, top);
+          
+          // Handle horizontal overflow - align right edge if menu would overflow
+          let left = buttonRect.left;
+          if (left + menuWidth > viewportWidth) {
+            left = viewportWidth - menuWidth - gap;
+          }
+          left = Math.max(gap, left);
+          
+          setReadingOrderMenuPosition({
+            top,
+            left,
+          });
+        }
+      }, 0);
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [showReadingOrderMenu]);
 
