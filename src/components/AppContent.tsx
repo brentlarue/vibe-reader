@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
 import NotesPage from './NotesPage';
+import BackToTop from './BackToTop';
 import { Feed } from '../types';
 
 interface AppContentProps {
@@ -148,6 +149,9 @@ function AppContent({
           <Route path="/article/:id" element={<ArticleReader />} />
         </Routes>
       </main>
+      
+      {/* Back to top button - only visible in standalone/PWA mode */}
+      <BackToTop />
     </div>
   );
 }
