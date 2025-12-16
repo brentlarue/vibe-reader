@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { FeedItem, Annotation } from '../types';
+import { FeedItem, Annotation, Feed } from '../types';
 import { storage } from '../utils/storage';
 import { summarizeItem } from '../services/aiSummarizer';
 import { generateAIFeature, AIFeatureType } from '../services/aiFeatures';
 import { createAnnotation, getAnnotationsForArticle } from '../utils/annotations';
 import ArticleActionBar from './ArticleActionBar';
+import { getFeedDisplayName } from '../utils/feedMatching';
 
 // Session storage key for navigation context
 const NAV_CONTEXT_KEY = 'articleNavContext';
@@ -21,6 +22,7 @@ export default function ArticleReader() {
   const navigate = useNavigate();
   const location = useLocation();
   const [item, setItem] = useState<FeedItem | null>(null);
+  const [feeds, setFeeds] = useState<Feed[]>([]);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const summaryGenerationInProgress = useRef<string | null>(null);
@@ -209,6 +211,23 @@ export default function ArticleReader() {
       navigate(`/article/${encodeURIComponent(nextId)}`);
     }
   }, [navContext, item, navigate]);
+
+  // Load feeds for feed lookup
+  useEffect(() => {
+    const loadFeeds = async () => {
+      try {
+        const loadedFeeds = await storage.getFeeds();
+        setFeeds(loadedFeeds);
+      } catch (error) {
+        console.error('Error loading feeds:', error);
+      }
+    };
+    loadFeeds();
+  }, []);
+
+  
+  // Get the current feed display name (syncs with feed renames)
+  const feedDisplayName = item ? getFeedDisplayName(item, feeds) : '';
 
   useEffect(() => {
     if (!id) return;
@@ -1225,7 +1244,7 @@ export default function ArticleReader() {
       <article ref={articleRef} className="prose prose-lg max-w-none" style={{ paddingLeft: '0', paddingRight: '0' }}>
         <header className="mb-8 sm:mb-12">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm mb-3 sm:mb-4" style={{ color: 'var(--theme-text-muted)' }}>
-            <span className="font-medium">{item.source}</span>
+            <span className="font-medium">{feedDisplayName}</span>
             <span>·</span>
             <time>{formatDate(item.publishedAt)}</time>
             <span>·</span>

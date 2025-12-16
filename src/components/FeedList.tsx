@@ -392,6 +392,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
                     scrollKey={scrollKey}
                     allItemIds={allItemIds}
                     itemIndex={items.findIndex((i) => i.id === item.id)}
+                    feeds={feeds}
                   />
                 ))}
               </div>
@@ -407,6 +408,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
             scrollKey={scrollKey}
             allItemIds={allItemIds}
             itemIndex={items.findIndex((i) => i.id === item.id)}
+            feeds={feeds}
           />
         ))
       )}

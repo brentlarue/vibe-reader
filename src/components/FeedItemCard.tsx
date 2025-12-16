@@ -6,6 +6,8 @@ import { storage } from '../utils/storage';
 import Toast from './Toast';
 import ShareModal from './ShareModal';
 import MeatballMenu from './MeatballMenu';
+import { getFeedDisplayName } from '../utils/feedMatching';
+import { Feed } from '../types';
 
 // Session storage key for navigation context
 const NAV_CONTEXT_KEY = 'articleNavContext';
@@ -16,6 +18,7 @@ interface FeedItemCardProps {
   scrollKey: string;
   allItemIds?: string[];  // List of all item IDs in current view
   itemIndex?: number;     // Index of this item in the list
+  feeds?: Feed[];         // Feeds array for displaying correct feed name
 }
 
 // Detect iOS
@@ -24,7 +27,9 @@ const isIOS = () => {
          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 };
 
-export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex }: FeedItemCardProps) {
+export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, feeds = [] }: FeedItemCardProps) {
+  // Get the current feed display name (syncs with feed renames)
+  const feedDisplayName = getFeedDisplayName(item, feeds);
   const navigate = useNavigate();
   const location = useLocation();
   const [showToast, setShowToast] = useState(false);
@@ -262,7 +267,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-          <span className="font-medium">{item.source}</span>
+          <span className="font-medium">{feedDisplayName}</span>
           <span>·</span>
           <time>{formatDate(item.publishedAt)}</time>
           <span>·</span>

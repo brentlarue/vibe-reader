@@ -93,3 +93,30 @@ export function itemBelongsToFeed(item: FeedItem, feed: Feed): boolean {
   return false;
 }
 
+/**
+ * Get the display name for an item's feed
+ * This ensures items always show the current feed display name, not the stored source
+ * @param item - The feed item
+ * @param feeds - Array of all feeds
+ * @returns The feed's display name, or item.source as fallback
+ */
+export function getFeedDisplayName(item: FeedItem, feeds: Feed[]): string {
+  // First try to find by feedId if available (most reliable)
+  if (item.feedId) {
+    const feed = feeds.find(f => f.id === item.feedId);
+    if (feed) {
+      return feed.name;
+    }
+  }
+  
+  // Otherwise, try to match using itemBelongsToFeed
+  for (const feed of feeds) {
+    if (itemBelongsToFeed(item, feed)) {
+      return feed.name;
+    }
+  }
+  
+  // Fallback to item.source if no feed found
+  return item.source;
+}
+
