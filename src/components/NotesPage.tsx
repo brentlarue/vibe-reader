@@ -140,8 +140,19 @@ export default function NotesPage() {
 
   if (annotations.length === 0) {
     return (
-      <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
-        <p style={{ color: 'var(--theme-text-muted)' }}>No notes or highlights yet.</p>
+      <div 
+        className="flex items-center justify-center w-full"
+        style={{ 
+          color: 'var(--theme-text-muted)',
+          minHeight: 'calc(100dvh - 8rem)',
+        }}
+      >
+        <div className="text-center">
+          <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No notes or highlights yet</p>
+          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+            Highlights and notes you create while reading articles will appear here
+          </p>
+        </div>
       </div>
     );
   }
