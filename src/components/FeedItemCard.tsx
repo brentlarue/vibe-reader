@@ -37,7 +37,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
   const [showReadingOrderMenu, setShowReadingOrderMenu] = useState(false);
   const readingOrderButtonRef = useRef<HTMLButtonElement>(null);
   const readingOrderMenuRef = useRef<HTMLDivElement>(null);
-  const [readingOrderMenuPosition, setReadingOrderMenuPosition] = useState({ top: 0, left: 0 });
+  const [readingOrderMenuPosition, setReadingOrderMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
   const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
@@ -113,14 +113,10 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     }
   };
 
-  // Calculate reading order menu position when opening
+  // Reset position when menu closes
   useEffect(() => {
-    if (showReadingOrderMenu && readingOrderButtonRef.current) {
-      const rect = readingOrderButtonRef.current.getBoundingClientRect();
-      setReadingOrderMenuPosition({
-        top: rect.bottom + 8, // 8px gap below button
-        left: rect.left,
-      });
+    if (!showReadingOrderMenu) {
+      setReadingOrderMenuPosition(null);
     }
   }, [showReadingOrderMenu]);
 
@@ -298,7 +294,16 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
           ref={readingOrderButtonRef}
           onClick={(e) => {
             e.stopPropagation();
-            setShowReadingOrderMenu((open) => !open);
+            const wasOpen = showReadingOrderMenu;
+            if (!wasOpen && readingOrderButtonRef.current) {
+              // Calculate position synchronously before opening
+              const rect = readingOrderButtonRef.current.getBoundingClientRect();
+              setReadingOrderMenuPosition({
+                top: rect.bottom + 8,
+                left: rect.left,
+              });
+            }
+            setShowReadingOrderMenu(!wasOpen);
           }}
           className="transition-colors touch-manipulation p-2 -ml-2"
           style={{
@@ -332,7 +337,7 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
         )}
 
         {/* Reading Order Menu Card */}
-        {showReadingOrderMenu && createPortal(
+        {showReadingOrderMenu && readingOrderMenuPosition && createPortal(
           <div
             ref={readingOrderMenuRef}
             className="fixed shadow-xl py-1 z-[101] min-w-[120px]"

@@ -21,51 +21,12 @@ export default function MeatballMenu({
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
-  // Calculate menu position when opening
+  // Recalculate position after menu renders to get actual dimensions (for fine-tuning)
   useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      const updatePosition = () => {
-        if (!buttonRef.current) return;
-        
-        const buttonRect = buttonRef.current.getBoundingClientRect();
-        const gap = 8;
-        const viewportHeight = window.innerHeight;
-        const viewportWidth = window.innerWidth;
-        
-        // Estimate menu height based on number of items (4 items × ~40px each + padding)
-        const estimatedMenuHeight = 180;
-        const estimatedMenuWidth = 160;
-        
-        // Check if menu would overflow bottom of viewport
-        const wouldOverflowBottom = buttonRect.bottom + gap + estimatedMenuHeight > viewportHeight;
-        
-        // Position above if it would overflow, otherwise below
-        let top = wouldOverflowBottom
-          ? buttonRect.top - estimatedMenuHeight - gap
-          : buttonRect.bottom + gap;
-        
-        // Ensure menu doesn't go above viewport
-        top = Math.max(gap, top);
-        
-        // Handle horizontal overflow - align right edge if menu would overflow
-        let left = buttonRect.left;
-        if (left + estimatedMenuWidth > viewportWidth) {
-          left = viewportWidth - estimatedMenuWidth - gap;
-        }
-        left = Math.max(gap, left);
-        
-        setMenuPosition({
-          top,
-          left,
-        });
-      };
-      
-      // Initial position calculation
-      updatePosition();
-      
-      // Recalculate after menu is rendered to get actual height
+    if (isOpen && menuRef.current && buttonRef.current && menuPosition) {
+      // Fine-tune position after menu is rendered with actual dimensions
       const timeoutId = setTimeout(() => {
         if (menuRef.current && buttonRef.current) {
           const buttonRect = buttonRef.current.getBoundingClientRect();
@@ -83,7 +44,6 @@ export default function MeatballMenu({
           
           top = Math.max(gap, top);
           
-          // Handle horizontal overflow - align right edge if menu would overflow
           let left = buttonRect.left;
           if (left + menuWidth > viewportWidth) {
             left = viewportWidth - menuWidth - gap;
@@ -98,8 +58,11 @@ export default function MeatballMenu({
       }, 0);
       
       return () => clearTimeout(timeoutId);
+    } else if (!isOpen) {
+      // Reset position when closing
+      setMenuPosition(null);
     }
-  }, [isOpen]);
+  }, [isOpen, menuPosition]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -177,7 +140,31 @@ export default function MeatballMenu({
         ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
-          setIsOpen(!isOpen);
+          const wasOpen = isOpen;
+          if (!wasOpen && buttonRef.current) {
+            // Calculate position synchronously before opening
+            const buttonRect = buttonRef.current.getBoundingClientRect();
+            const gap = 8;
+            const viewportHeight = window.innerHeight;
+            const viewportWidth = window.innerWidth;
+            const estimatedMenuHeight = 180;
+            const estimatedMenuWidth = 160;
+            
+            const wouldOverflowBottom = buttonRect.bottom + gap + estimatedMenuHeight > viewportHeight;
+            let top = wouldOverflowBottom
+              ? buttonRect.top - estimatedMenuHeight - gap
+              : buttonRect.bottom + gap;
+            top = Math.max(gap, top);
+            
+            let left = buttonRect.left;
+            if (left + estimatedMenuWidth > viewportWidth) {
+              left = viewportWidth - estimatedMenuWidth - gap;
+            }
+            left = Math.max(gap, left);
+            
+            setMenuPosition({ top, left });
+          }
+          setIsOpen(!wasOpen);
         }}
         className={`transition-colors p-2 sm:p-2 rounded-md touch-manipulation ${buttonClassName}`}
         style={{ color: 'var(--theme-text-muted)' }}
@@ -198,7 +185,7 @@ export default function MeatballMenu({
       </button>
 
       {/* Menu Card */}
-      {isOpen && createPortal(
+      {isOpen && menuPosition && createPortal(
         <div
           ref={menuRef}
           className="fixed shadow-xl py-1 z-[101] min-w-[160px]"
