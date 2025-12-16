@@ -214,7 +214,7 @@ export default function LoginPage() {
           </div>
 
           {recaptchaSiteKey && (
-            <div className="flex justify-center">
+            <div className="flex justify-start mb-6">
               <ReCAPTCHA
                 ref={recaptchaRef}
                 sitekey={recaptchaSiteKey}
