@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
 import { useLocation } from 'react-router-dom';
 import { itemBelongsToFeed } from '../utils/feedMatching';
+import { fetchOlderRss } from '../utils/rss';
 
 interface FeedListProps {
   status: FeedItem['status'];
@@ -29,6 +30,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [readingOrderFilter, setReadingOrderFilter] = useState<'all' | 'next' | 'later' | 'someday'>('all');
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const location = useLocation();
   const scrollKey = `scrollPosition_${status}_${selectedFeedId || 'all'}`;
   const hasRestoredScroll = useRef(false);
@@ -155,6 +157,84 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
     }
   };
 
+  const handleFetchOlder = async () => {
+    if (!selectedFeedId) return;
+    
+    const selectedFeed = feeds.find(f => f.id === selectedFeedId);
+    if (!selectedFeed) return;
+
+    setIsLoadingOlder(true);
+    try {
+      // Get all existing items (all statuses) to check against
+      // This ensures we can find the oldest item even if current view is empty
+      const allExistingItems = await storage.getFeedItems();
+      
+      // Fetch 5 older posts
+      const { items: olderItems, feedTitle } = await fetchOlderRss(
+        selectedFeed.url,
+        allExistingItems,
+        selectedFeed.rssTitle
+      );
+
+      if (olderItems.length > 0) {
+        // Upsert the older items
+        await storage.upsertFeedItems(selectedFeedId, olderItems.map(item => ({
+          ...item,
+          source: feedTitle,
+        })));
+        
+        // Refresh the items list
+        loadItems();
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      } else {
+        alert('No older posts found. You may have reached the end of the feed.');
+      }
+    } catch (error) {
+      console.error('Error fetching older posts:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch older posts';
+      if (errorMessage.includes('No existing items')) {
+        alert('Cannot fetch older posts: No items found for this feed. Please refresh the feed first.');
+      } else {
+        alert(errorMessage);
+      }
+    } finally {
+      setIsLoadingOlder(false);
+    }
+  };
+
+  // Check if we should show the "Get 5 older posts" button
+  // Only show when:
+  // 1. Status is 'inbox'
+  // 2. A feed is selected
+  // 3. The feed has at least one item (in any status) - we need this to determine "oldest"
+  const shouldShowFetchOlder = status === 'inbox' && selectedFeedId;
+  
+  // Check if the selected feed has any items (all statuses) to determine if we can fetch older
+  const [canFetchOlder, setCanFetchOlder] = useState(false);
+  useEffect(() => {
+    const checkCanFetchOlder = async () => {
+      if (!selectedFeedId || !shouldShowFetchOlder) {
+        setCanFetchOlder(false);
+        return;
+      }
+      
+      const selectedFeed = feeds.find(f => f.id === selectedFeedId);
+      if (!selectedFeed) {
+        setCanFetchOlder(false);
+        return;
+      }
+      
+      // Get all items (all statuses) for this feed
+      const allItems = await storage.getFeedItems();
+      const feedItems = allItems.filter(item => itemBelongsToFeed(item, selectedFeed));
+      
+      // Can fetch older if we have at least one item for this feed
+      setCanFetchOlder(feedItems.length > 0);
+    };
+    
+    checkCanFetchOlder();
+  }, [selectedFeedId, feeds, shouldShowFetchOlder]);
+
   const getStatusLabel = (status: FeedItem['status']) => {
     switch (status) {
       case 'inbox':
@@ -215,6 +295,8 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   // Only show "no items" message if we've attempted to load and items array is empty
   if (hasAttemptedLoad && items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
+    const showFetchOlderButton = shouldShowFetchOlder && canFetchOlder;
+    
     return (
       <PullToRefresh onRefresh={handleRefresh}>
         <div 
@@ -226,11 +308,37 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
         >
           <div className="text-center">
             <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>No items found</p>
-            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+            <p className="text-sm mb-6" style={{ color: 'var(--theme-text-muted)' }}>
               {selectedFeed 
                 ? `No items from "${selectedFeed.name}" with status "${getStatusLabel(status)}"`
                 : `Items with status "${getStatusLabel(status)}" will appear here`}
             </p>
+            {showFetchOlderButton && (
+              <button
+                onClick={handleFetchOlder}
+                disabled={isLoadingOlder}
+                className="px-4 py-2 text-sm border transition-colors focus:outline-none touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  borderColor: 'var(--theme-border)',
+                  backgroundColor: isLoadingOlder ? 'var(--theme-border)' : 'transparent',
+                  color: 'var(--theme-text)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoadingOlder) {
+                    e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
+                    e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoadingOlder) {
+                    e.currentTarget.style.borderColor = 'var(--theme-border)';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                {isLoadingOlder ? 'Loading...' : 'Get 5 older posts'}
+              </button>
+            )}
           </div>
         </div>
       </PullToRefresh>
@@ -411,6 +519,36 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
             feeds={feeds}
           />
         ))
+      )}
+      
+      {/* Show "Get 5 older posts" button after last item when feed is selected and status is inbox */}
+      {shouldShowFetchOlder && items.length > 0 && canFetchOlder && (
+        <div className="flex justify-center mt-8 mb-4">
+          <button
+            onClick={handleFetchOlder}
+            disabled={isLoadingOlder}
+            className="px-4 py-2 text-sm border transition-colors focus:outline-none touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              borderColor: 'var(--theme-border)',
+              backgroundColor: isLoadingOlder ? 'var(--theme-border)' : 'transparent',
+              color: 'var(--theme-text)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isLoadingOlder) {
+                e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isLoadingOlder) {
+                e.currentTarget.style.borderColor = 'var(--theme-border)';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            {isLoadingOlder ? 'Loading...' : 'Get 5 older posts'}
+          </button>
+        </div>
       )}
     </div>
     </PullToRefresh>

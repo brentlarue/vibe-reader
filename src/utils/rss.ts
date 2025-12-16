@@ -348,3 +348,203 @@ export async function fetchRss(feedUrl: string, existingItems: FeedItem[] = [], 
   }
 }
 
+/**
+ * Fetches and parses older RSS items (5 items older than the oldest existing item for this feed)
+ * This is useful for fetching historical content from feeds
+ * @param feedUrl - The RSS feed URL
+ * @param existingItems - All existing feed items to check against
+ * @param feedRssTitle - Optional RSS title for matching items to this feed
+ * @returns Promise with items array and feedTitle
+ */
+export async function fetchOlderRss(feedUrl: string, existingItems: FeedItem[] = [], feedRssTitle?: string): Promise<{ items: FeedItem[], feedTitle: string }> {
+  console.log('Fetching older RSS items for', feedUrl);
+  
+  try {
+    // Use our server-side RSS proxy
+    const response = await apiFetch('/api/rss-proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ feedUrl }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || `Failed to fetch RSS feed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'error') {
+      const errorMessage = data.message || data.error || 'Failed to fetch RSS feed';
+      throw new Error(errorMessage);
+    }
+
+    if (!data.items || !Array.isArray(data.items)) {
+      throw new Error('Invalid RSS feed response: no items array');
+    }
+
+    const feedTitle = data.feed?.title || formatUrlAsTitle(feedUrl);
+
+    // Find existing items for this specific feed
+    const feedExistingItems = existingItems.filter(item => {
+      const matchTitle = feedRssTitle || feedTitle;
+      return item.source === matchTitle;
+    });
+
+    // Find the OLDEST existing item's publishedAt timestamp (for fetching older items)
+    let oldestExistingTimestamp: number | null = null;
+    if (feedExistingItems.length > 0) {
+      const timestamps = feedExistingItems
+        .map(item => new Date(item.publishedAt).getTime())
+        .filter(time => !isNaN(time));
+      
+      if (timestamps.length > 0) {
+        oldestExistingTimestamp = Math.min(...timestamps); // MIN (oldest), not MAX
+        console.log('Oldest existing item for feed:', feedTitle, 'timestamp:', new Date(oldestExistingTimestamp).toISOString());
+      }
+    }
+
+    if (oldestExistingTimestamp === null) {
+      throw new Error('No existing items found for this feed. Cannot fetch older posts without existing items.');
+    }
+
+    // Map all items to FeedItems (similar to fetchRss)
+    const allFeedItems: FeedItem[] = data.items.map((item: any, index: number) => {
+      const guid = item.guid && item.guid.trim() ? item.guid.trim() : null;
+      const url = item.link && item.link.trim() ? item.link.trim() : '';
+      const title = item.title || '';
+      
+      let id: string;
+      if (guid) {
+        id = guid;
+      } else if (url) {
+        id = url;
+      } else {
+        const baseString = `${feedUrl}-${title || index}`;
+        id = baseString.replace(/[^a-zA-Z0-9-]/g, '-').substring(0, 200);
+      }
+
+      let publishedAt: string;
+      if (item.pubDate) {
+        const pubDate = new Date(item.pubDate);
+        if (!isNaN(pubDate.getTime())) {
+          publishedAt = pubDate.toISOString();
+        } else {
+          publishedAt = new Date().toISOString();
+        }
+      } else {
+        publishedAt = new Date().toISOString();
+      }
+
+      const rawContent = item.content || item['content:encoded'] || item.description || item.contentSnippet || '';
+      const fullContent = rawContent.trim();
+      
+      let contentSnippet = '';
+      if (item.contentSnippet && item.contentSnippet.trim()) {
+        contentSnippet = item.contentSnippet.trim();
+      } else if (fullContent) {
+        contentSnippet = fullContent
+          .replace(/<[^>]*>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      return {
+        id,
+        source: feedTitle,
+        sourceType: 'rss' as const,
+        title: item.title || 'Untitled',
+        url,
+        publishedAt,
+        contentSnippet: contentSnippet || (item.title || 'No content available'),
+        aiSummary: undefined,
+        status: 'inbox' as const,
+        fullContent: fullContent || undefined,
+      };
+    });
+
+    // Normalize URLs for deduplication
+    const normalizeUrl = (url: string): string => {
+      if (!url) return '';
+      try {
+        const urlObj = new URL(url);
+        urlObj.pathname = urlObj.pathname.replace(/\/$/, '');
+        urlObj.search = new URLSearchParams(urlObj.searchParams).toString();
+        return urlObj.toString();
+      } catch {
+        return url.trim().replace(/\/$/, '');
+      }
+    };
+
+    // Sort by publishedAt descending (newest first)
+    allFeedItems.sort((a, b) => {
+      const dateA = new Date(a.publishedAt).getTime();
+      const dateB = new Date(b.publishedAt).getTime();
+      return dateB - dateA;
+    });
+
+    // Filter to only include items OLDER than the oldest existing item
+    const itemsOlderThanExisting = allFeedItems.filter(item => {
+      const itemTimestamp = new Date(item.publishedAt).getTime();
+      // Only include items that are older (smaller timestamp) than the oldest existing
+      return !isNaN(itemTimestamp) && itemTimestamp < oldestExistingTimestamp!;
+    });
+    console.log('Filtered to items older than existing:', itemsOlderThanExisting.length, 'out of', allFeedItems.length, 'total items');
+
+    // Deduplicate against existing items
+    const existingUrls = new Set(
+      existingItems
+        .map(item => normalizeUrl(item.url))
+        .filter(Boolean)
+    );
+    const existingIds = new Set(existingItems.map(item => item.id).filter(Boolean));
+    const existingNormalizedUrls = new Set(
+      existingItems
+        .map(item => {
+          if (item.id && !item.id.startsWith('http')) {
+            return null;
+          }
+          return normalizeUrl(item.id || item.url);
+        })
+        .filter(Boolean)
+    );
+
+    // Filter out duplicates and limit to 5 oldest items
+    const newItems: FeedItem[] = [];
+    for (const item of itemsOlderThanExisting) {
+      if (newItems.length >= 5) break;
+      
+      const normalizedItemUrl = normalizeUrl(item.url);
+      const normalizedItemId = item.id.startsWith('http') ? normalizeUrl(item.id) : item.id;
+      
+      const isDuplicate = 
+        existingIds.has(item.id) ||
+        (normalizedItemUrl && existingUrls.has(normalizedItemUrl)) ||
+        (item.id.startsWith('http') && normalizedItemId && existingNormalizedUrls.has(normalizedItemId));
+      
+      if (!isDuplicate) {
+        newItems.push(item);
+      }
+    }
+
+    // Sort by date descending (newest of the older items first)
+    newItems.sort((a, b) => {
+      const dateA = new Date(a.publishedAt).getTime();
+      const dateB = new Date(b.publishedAt).getTime();
+      return dateB - dateA;
+    });
+
+    console.log('Fetched', newItems.length, 'older items from', feedUrl);
+
+    return {
+      items: newItems,
+      feedTitle: feedTitle
+    };
+  } catch (error) {
+    console.error('RSS fetch older error', feedUrl, error);
+    throw error;
+  }
+}
+
