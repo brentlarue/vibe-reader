@@ -379,12 +379,8 @@ export default function ArticleReader() {
           // Mark that we've scrolled so we don't scroll again
           hasScrolledToHighlightRef.current = true;
           
-          // Highlight the mark briefly for visual feedback
-          const originalBg = mark.style.backgroundColor;
-          mark.style.backgroundColor = 'rgba(255, 235, 59, 0.6)';
-          setTimeout(() => {
-            mark.style.backgroundColor = originalBg;
-          }, 1000);
+          // Note: Highlight already has the correct transparency (0.35) from applyHighlightsToContent
+          // No need to temporarily change it for visual feedback
           
           return true; // Found and scrolled
         }
