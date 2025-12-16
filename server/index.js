@@ -27,6 +27,7 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER
 // Authentication constants - must be set in environment variables
 const APP_PASSWORD = process.env.APP_PASSWORD;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
 
 // Validate required environment variables
 if (!APP_PASSWORD) {
@@ -176,16 +177,55 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser());
 
+// Helper function to verify reCAPTCHA token
+async function verifyRecaptcha(token) {
+  if (!RECAPTCHA_SECRET_KEY) {
+    // If no secret key is set, skip validation (for development/testing)
+    console.log('[LOGIN] RECAPTCHA_SECRET_KEY not set, skipping captcha validation');
+    return true;
+  }
+
+  if (!token || typeof token !== 'string') {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `secret=${encodeURIComponent(RECAPTCHA_SECRET_KEY)}&response=${encodeURIComponent(token)}`,
+    });
+
+    const data = await response.json();
+    console.log('[LOGIN] reCAPTCHA verification result:', data.success);
+    return data.success === true;
+  } catch (error) {
+    console.error('[LOGIN] Error verifying reCAPTCHA:', error);
+    return false;
+  }
+}
+
 // Public routes (before auth middleware)
 // Login endpoint
 app.post('/api/login', async (req, res) => {
   console.log('[LOGIN] /api/login called');
   
-  const { password, rememberMe } = req.body;
+  const { password, rememberMe, captchaToken } = req.body;
 
   if (!password || typeof password !== 'string') {
     console.log('[LOGIN] Password missing or not a string');
     return res.status(400).json({ error: 'Password is required' });
+  }
+
+  // Verify captcha if secret key is configured
+  if (RECAPTCHA_SECRET_KEY) {
+    const captchaValid = await verifyRecaptcha(captchaToken);
+    if (!captchaValid) {
+      console.log('[LOGIN] Invalid or missing captcha token');
+      return res.status(400).json({ error: 'Please complete the captcha verification' });
+    }
   }
 
   // Use secure comparison to prevent timing attacks

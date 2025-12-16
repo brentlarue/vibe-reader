@@ -1,4 +1,5 @@
-import { useState, FormEvent, useMemo } from 'react';
+import { useState, FormEvent, useMemo, useRef } from 'react';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 export default function LoginPage() {
   const [password, setPassword] = useState('');
@@ -6,6 +7,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
   
   // Detect if we're in dev environment (localhost or dev domain)
   const isDev = useMemo(() => {
@@ -13,9 +16,19 @@ export default function LoginPage() {
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
   }, []);
 
+  // Get reCAPTCHA site key from environment variable
+  const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validate captcha
+    if (recaptchaSiteKey && !captchaToken) {
+      setError('Please complete the captcha verification');
+      return;
+    }
+
     setIsLoading(true);
 
     console.log('[LOGIN-FE] Submitting login form');
@@ -28,7 +41,7 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ password, rememberMe }),
+        body: JSON.stringify({ password, rememberMe, captchaToken }),
       });
 
       console.log('[LOGIN-FE] Response status:', res.status);
@@ -44,16 +57,35 @@ export default function LoginPage() {
       } else if (res.status === 401) {
         console.log('[LOGIN-FE] 401 Unauthorized');
         setError(data.error || 'Incorrect password');
+        // Reset captcha on error
+        if (recaptchaRef.current) {
+          recaptchaRef.current.reset();
+          setCaptchaToken(null);
+        }
       } else {
         console.log('[LOGIN-FE] Other error:', res.status);
         setError(data.error || 'An error occurred. Please try again.');
+        // Reset captcha on error
+        if (recaptchaRef.current) {
+          recaptchaRef.current.reset();
+          setCaptchaToken(null);
+        }
       }
     } catch (error) {
       console.error('[LOGIN-FE] Login error:', error);
       setError('An error occurred. Please try again.');
+      // Reset captcha on error
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset();
+        setCaptchaToken(null);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCaptchaChange = (token: string | null) => {
+    setCaptchaToken(token);
   };
 
   return (
@@ -180,6 +212,17 @@ export default function LoginPage() {
               Remember me
             </label>
           </div>
+
+          {recaptchaSiteKey && (
+            <div className="flex justify-center">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={recaptchaSiteKey}
+                onChange={handleCaptchaChange}
+                theme="light"
+              />
+            </div>
+          )}
 
           {error && (
             <div
