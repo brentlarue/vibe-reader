@@ -17,6 +17,13 @@ function App() {
   // Mobile drawer state (separate from desktop collapse, local to device)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
+  // Set page title based on environment
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
+    document.title = isDev ? 'The Signal (DEV)' : 'The Signal';
+  }, []);
+
   // Check authentication status on mount
   useEffect(() => {
     const checkAuth = async () => {
