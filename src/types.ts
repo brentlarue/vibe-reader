@@ -1,4 +1,4 @@
-export type SourceType = 'rss' | 'x';
+export type SourceType = 'rss' | 'x' | 'custom';
 
 export type ReadingOrder = 'next' | 'later' | 'someday';
 

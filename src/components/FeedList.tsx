@@ -6,6 +6,7 @@ import { storage } from '../utils/storage';
 import { useLocation } from 'react-router-dom';
 import { itemBelongsToFeed } from '../utils/feedMatching';
 import { fetchOlderRss } from '../utils/rss';
+import { apiFetch } from '../utils/apiFetch';
 
 interface FeedListProps {
   status: FeedItem['status'];
@@ -165,29 +166,61 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
 
     setIsLoadingOlder(true);
     try {
-      // Get all existing items (all statuses) to check against
-      // This ensures we can find the oldest item even if current view is empty
-      const allExistingItems = await storage.getFeedItems();
-      
-      // Fetch 5 older posts
-      const { items: olderItems, feedTitle } = await fetchOlderRss(
-        selectedFeed.url,
-        allExistingItems,
-        selectedFeed.rssTitle
-      );
-
-      if (olderItems.length > 0) {
-        // Upsert the older items
-        await storage.upsertFeedItems(selectedFeedId, olderItems.map(item => ({
-          ...item,
-          source: feedTitle,
-        })));
+      // Handle custom feeds (like NeverEnough) differently
+      if (selectedFeed.sourceType === 'custom') {
+        // Call the custom feed's load-older endpoint
+        // Extract the feed identifier from the URL (e.g., /api/custom-feeds/neverenough/rss.xml -> neverenough)
+        const feedUrlMatch = selectedFeed.url.match(/\/api\/custom-feeds\/([^/]+)\//);
+        if (!feedUrlMatch) {
+          throw new Error('Invalid custom feed URL');
+        }
+        const feedSlug = feedUrlMatch[1];
         
-        // Refresh the items list
-        loadItems();
-        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        const response = await apiFetch(`/api/custom-feeds/${feedSlug}/load-older`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to load older items');
+        }
+        
+        const result = await response.json();
+        
+        if (result.newItems > 0) {
+          // Refresh the items list - items are already stored by the server
+          loadItems();
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        } else {
+          alert(result.message || 'No older posts found. You may have reached the end of the archive.');
+        }
       } else {
-        alert('No older posts found. You may have reached the end of the feed.');
+        // Regular RSS feed - use the existing logic
+        // Get all existing items (all statuses) to check against
+        // This ensures we can find the oldest item even if current view is empty
+        const allExistingItems = await storage.getFeedItems();
+        
+        // Fetch 5 older posts
+        const { items: olderItems, feedTitle } = await fetchOlderRss(
+          selectedFeed.url,
+          allExistingItems,
+          selectedFeed.rssTitle
+        );
+
+        if (olderItems.length > 0) {
+          // Upsert the older items
+          await storage.upsertFeedItems(selectedFeedId, olderItems.map(item => ({
+            ...item,
+            source: feedTitle,
+          })));
+          
+          // Refresh the items list
+          loadItems();
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        } else {
+          alert('No older posts found. You may have reached the end of the feed.');
+        }
       }
     } catch (error) {
       console.error('Error fetching older posts:', error);

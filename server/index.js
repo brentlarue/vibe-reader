@@ -19,6 +19,9 @@ const { isSupabaseConfigured } = await import('./db/supabaseClient.js');
 const feedRepo = await import('./db/feedRepository.js');
 const { getAppEnv } = await import('./db/env.js');
 
+// Import custom feeds router
+const customFeedsRouter = (await import('./routes/customFeeds.js')).default;
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 // Check if we're in production (Render sets NODE_ENV automatically)
@@ -2029,6 +2032,14 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
   }
 });
 
+// ============================================================================
+// CUSTOM FEEDS (internally generated RSS feeds)
+// ============================================================================
+
+// Mount custom feeds router with auth middleware
+// The RSS endpoint is accessible to authenticated users for internal subscription
+app.use('/api/custom-feeds', requireAuth, customFeedsRouter);
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const health = {
@@ -2076,10 +2087,90 @@ if (isProduction) {
   }
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   if (isProduction) {
     console.log('Production mode: Serving static files from dist/');
   }
+  
+  // Initialize custom feeds on server startup
+  await initializeCustomFeeds();
 });
 
+/**
+ * Initialize custom feeds on server startup
+ * - Creates feed records if they don't exist
+ * - Scrapes and populates data if feed is empty
+ * - Works for both dev and production environments
+ */
+async function initializeCustomFeeds() {
+  if (!isSupabaseConfigured()) {
+    console.log('[Custom Feeds] Skipping initialization - Supabase not configured');
+    return;
+  }
+
+  const env = getAppEnv();
+  console.log(`[Custom Feeds] Initializing custom feeds for env=${env}...`);
+
+  try {
+    // Import the custom feeds module
+    const { ensureNeverEnoughFeed, NEVERENOUGH_FEED_URL } = await import('./routes/customFeeds.js');
+    const { scrapeAllIssues, SOURCE_NAME, fetchArticleContent } = await import('./scrapers/neverenough.js');
+
+    // Ensure the NeverEnough feed exists
+    const feed = await ensureNeverEnoughFeed();
+    console.log(`[Custom Feeds] NeverEnough feed ready (id=${feed.id})`);
+
+    // Check if feed has items
+    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id });
+    
+    if (existingItems.length === 0) {
+      console.log('[Custom Feeds] NeverEnough feed is empty, triggering initial scrape...');
+      
+      // Scrape issues (just first page for initial load)
+      const issues = await scrapeAllIssues({ maxPages: 1 });
+      
+      if (issues.length > 0) {
+        // Sort by date descending and take only the 5 most recent (like regular RSS feeds)
+        const sortedIssues = [...issues].sort((a, b) => {
+          const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+          const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+          return dateB - dateA;
+        });
+        const recentIssues = sortedIssues.slice(0, 5);
+        
+        // Fetch full content for each article
+        console.log(`[Custom Feeds] Fetching full content for ${recentIssues.length} articles...`);
+        for (const issue of recentIssues) {
+          issue.fullContent = await fetchArticleContent(issue.url);
+          // Small delay between fetches to be respectful
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
+        // Transform and insert items - use feed's rssTitle as source for consistency
+        const feedItems = recentIssues.map(issue => ({
+          title: issue.title,
+          url: issue.url,
+          publishedAt: issue.publishedAt,
+          contentSnippet: issue.contentSnippet,
+          fullContent: issue.fullContent || '', // Include full article content
+          source: feed.rssTitle || SOURCE_NAME, // Use rssTitle for proper feed matching
+          sourceType: 'custom',
+          status: 'inbox',
+        }));
+
+        await feedRepo.upsertFeedItems(feed.id, feedItems);
+        console.log(`[Custom Feeds] Added ${recentIssues.length} NeverEnough issues with full content`);
+      } else {
+        console.warn('[Custom Feeds] Scrape returned no issues');
+      }
+    } else {
+      console.log(`[Custom Feeds] NeverEnough feed has ${existingItems.length} items, skipping scrape`);
+    }
+
+    console.log('[Custom Feeds] Initialization complete');
+  } catch (error) {
+    console.error('[Custom Feeds] Initialization error:', error.message);
+    // Don't crash the server on initialization failure
+  }
+}
