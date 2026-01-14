@@ -48,6 +48,11 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     { path: '/archive', label: 'Archive' },
   ];
 
+  // Add workflows link in dev mode
+  if (isDev) {
+    navItems.push({ path: '/workflows/feed-discovery', label: 'Workflows' });
+  }
+
   const handleAddFeed = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);

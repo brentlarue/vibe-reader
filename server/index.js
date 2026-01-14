@@ -22,6 +22,19 @@ const { getAppEnv } = await import('./db/env.js');
 // Import custom feeds router
 const customFeedsRouter = (await import('./routes/customFeeds.js')).default;
 
+// Import tools router and initialize tools
+const toolsRouter = (await import('./routes/tools.js')).default;
+const { initializeTools } = await import('./tools/init.js');
+
+// Import LLM router
+const llmRouter = (await import('./routes/llm.js')).default;
+
+// Import workflows router
+const workflowsRouter = (await import('./routes/workflows.js')).default;
+
+// Initialize tools on server startup
+initializeTools();
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 // Check if we're in production (Render sets NODE_ENV automatically)
@@ -2039,6 +2052,25 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
 // Mount custom feeds router with auth middleware
 // The RSS endpoint is accessible to authenticated users for internal subscription
 app.use('/api/custom-feeds', requireAuth, customFeedsRouter);
+
+// ============================================================================
+// TOOLS (debug endpoints for workflow tools)
+// ============================================================================
+
+// Mount tools router with auth middleware
+app.use('/api/debug', requireAuth, toolsRouter);
+
+// Mount LLM router with auth middleware
+app.use('/api/debug', requireAuth, llmRouter);
+
+// Mount workflows router with auth middleware
+app.use('/api/workflows', requireAuth, workflowsRouter);
+
+// Import evals router
+const evalsRouter = (await import('./routes/evals.js')).default;
+
+// Mount evals router with auth middleware
+app.use('/api/evals', requireAuth, evalsRouter);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
