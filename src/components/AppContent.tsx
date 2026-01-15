@@ -4,7 +4,6 @@ import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
 import NotesPage from './NotesPage';
-import WorkflowInspector from './WorkflowInspector/WorkflowInspector';
 import BackToTop from './BackToTop';
 import { Feed } from '../types';
 
@@ -147,7 +146,6 @@ function AppContent({
           <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
-          <Route path="/workflows/:slug" element={<WorkflowInspector />} />
           <Route path="/article/:id" element={<ArticleReader />} />
         </Routes>
       </main>
