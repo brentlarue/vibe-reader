@@ -70,13 +70,23 @@ export const storage = {
     try {
       const feeds = await apiRequest<Feed[]>('feeds');
       saveToLocalStorage(FEEDS_KEY, feeds);
+      console.log('[Storage] Successfully fetched feeds:', feeds.length);
       return feeds;
     } catch (error: unknown) {
       const err = error as { suppressWarning?: boolean; isUnauthorized?: boolean };
+      console.error('[Storage] Failed to fetch feeds:', {
+        error,
+        isUnauthorized: err?.isUnauthorized,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
       if (!err?.suppressWarning && !err?.isUnauthorized) {
         console.warn('Failed to fetch feeds from API, using local storage:', error);
       }
-      return fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
+      
+      const cached = fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
+      console.log('[Storage] Using cached feeds:', cached.length);
+      return cached;
     }
   },
 
@@ -195,13 +205,24 @@ export const storage = {
         saveToLocalStorage(FEED_ITEMS_KEY, items);
       }
       
+      console.log('[Storage] Successfully fetched items:', items.length, options);
       return items;
     } catch (error: unknown) {
       const err = error as { suppressWarning?: boolean; isUnauthorized?: boolean };
+      console.error('[Storage] Failed to fetch items:', {
+        error,
+        isUnauthorized: err?.isUnauthorized,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        options
+      });
+      
       if (!err?.suppressWarning && !err?.isUnauthorized) {
         console.warn('Failed to fetch feed items from API, using local storage:', error);
       }
-      return fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      
+      const cached = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+      console.log('[Storage] Using cached items:', cached.length);
+      return cached;
     }
   },
 
