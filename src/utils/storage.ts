@@ -452,4 +452,25 @@ export const storage = {
       throw error;
     }
   },
+
+  /**
+   * Clear local cache (localStorage) without affecting server data
+   * Forces the app to refetch fresh data from the server
+   */
+  clearLocalCache: (): void => {
+    if (typeof window === 'undefined') return;
+    
+    // Clear all vibe-reader related localStorage keys
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('vibe-reader-')) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    
+    console.log(`[Cache] Cleared ${keysToRemove.length} cached items from localStorage`);
+  },
 };

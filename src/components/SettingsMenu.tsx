@@ -364,6 +364,30 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
             <span>Cull the herd</span>
           </button>
 
+          {/* Clear cache */}
+          <button
+            onClick={() => {
+              storage.clearLocalCache();
+              setIsOpen(false);
+              // Force reload to fetch fresh data from server
+              window.location.reload();
+            }}
+            className="w-full text-left px-2 py-2.5 text-sm transition-colors"
+            style={{
+              color: 'var(--theme-text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span>Clear cache</span>
+          </button>
+
           {/* Log out */}
           <button
             onClick={handleLogout}
