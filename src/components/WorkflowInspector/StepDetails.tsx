@@ -6,7 +6,6 @@
 
 import { useState } from 'react';
 import { WorkflowRunStep, WorkflowRun } from '../../types';
-import { rerunFromStep } from '../../utils/workflowApi';
 
 interface StepDetailsProps {
   step: WorkflowRunStep | null;
@@ -15,7 +14,7 @@ interface StepDetailsProps {
   onRerunComplete?: (run: WorkflowRun) => void;
 }
 
-export default function StepDetails({ step, run, workflowSlug, onRerunComplete }: StepDetailsProps) {
+export default function StepDetails({ step, run: _run, workflowSlug: _workflowSlug, onRerunComplete: _onRerunComplete }: StepDetailsProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['input', 'output']));
 
   if (!step) {

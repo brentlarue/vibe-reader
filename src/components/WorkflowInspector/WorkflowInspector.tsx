@@ -253,14 +253,14 @@ export default function WorkflowInspector() {
                 <>
                   <ModelSelector
                     key={`model-${selectedStepId}`}
-                    step={workflow.definitionJson.steps.find((s: any) => s.id === selectedStepId)}
+                    step={workflow.definitionJson.steps.find((s: any) => s.id === selectedStepId)!}
                     onSave={async (stepId, model) => {
                       await handleUpdateWorkflow(stepId, { model });
                     }}
                   />
                   <PromptEditor
                     key={`prompt-${selectedStepId}`}
-                    step={workflow.definitionJson.steps.find((s: any) => s.id === selectedStepId)}
+                    step={workflow.definitionJson.steps.find((s: any) => s.id === selectedStepId)!}
                     onSave={async (stepId, updates) => {
                       await handleUpdateWorkflow(stepId, updates);
                     }}

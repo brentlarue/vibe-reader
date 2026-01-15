@@ -315,10 +315,10 @@ export default function RunPanel({ workflowSlug, onRunComplete }: RunPanelProps)
             )}
           </div>
 
-          {currentRun.outputJson && currentRun.outputJson.feeds && (
+          {currentRun.outputJson && (currentRun.outputJson as { feeds?: unknown[] }).feeds && (
             <div>
               <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-                Results ({currentRun.outputJson.feeds.length} feeds)
+                Results ({((currentRun.outputJson as { feeds?: unknown[] }).feeds || []).length} feeds)
               </h3>
               <div
                 style={{

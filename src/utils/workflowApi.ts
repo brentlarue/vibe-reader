@@ -4,7 +4,7 @@
  * Provides functions to interact with the workflow API endpoints.
  */
 
-import { Workflow, WorkflowRun, WorkflowRunStep } from '../types';
+import { Workflow, WorkflowRun } from '../types';
 
 const API_BASE = '/api/workflows';
 
