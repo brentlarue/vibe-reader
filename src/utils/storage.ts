@@ -33,24 +33,52 @@ const apiRequest = async <T>(endpoint: string, options: RequestInit = {}): Promi
 
 /**
  * Fallback to localStorage if API fails
+ * Handles quota/access errors gracefully
  */
 const fallbackToLocalStorage = <T>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  if (!stored) return defaultValue;
+  
   try {
-    return JSON.parse(stored);
-  } catch {
+    const stored = localStorage.getItem(key);
+    if (!stored) return defaultValue;
+    try {
+      return JSON.parse(stored);
+    } catch (parseError) {
+      console.warn(`[Storage] Failed to parse cached ${key}, using default:`, parseError);
+      return defaultValue;
+    }
+  } catch (error) {
+    // localStorage might be disabled or quota exceeded
+    console.warn(`[Storage] Cannot access localStorage for ${key}, using default:`, error);
     return defaultValue;
   }
 };
 
 /**
  * Save to localStorage for local caching
+ * Handles quota exceeded errors gracefully
  */
 const saveToLocalStorage = (key: string, value: unknown): void => {
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') return;
+  
+  try {
     localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      console.warn(`[Storage] Quota exceeded when saving ${key}, clearing old cache and retrying...`);
+      try {
+        // Try clearing old cache first
+        localStorage.removeItem(key);
+        localStorage.setItem(key, JSON.stringify(value));
+        console.log(`[Storage] Successfully saved ${key} after clearing old cache`);
+      } catch (retryError) {
+        console.error(`[Storage] Still cannot save ${key} after clearing, storage quota exceeded:`, retryError);
+        // Don't throw - continue without caching
+      }
+    } else {
+      console.error(`[Storage] Error saving ${key}:`, error);
+      // Don't throw - continue without caching
+    }
   }
 };
 
@@ -69,7 +97,12 @@ export const storage = {
   getFeeds: async (): Promise<Feed[]> => {
     try {
       const feeds = await apiRequest<Feed[]>('feeds');
-      saveToLocalStorage(FEEDS_KEY, feeds);
+      // Don't fail if caching fails - return the API data anyway
+      try {
+        saveToLocalStorage(FEEDS_KEY, feeds);
+      } catch (cacheError) {
+        console.warn('[Storage] Failed to cache feeds, but continuing with API data:', cacheError);
+      }
       console.log('[Storage] Successfully fetched feeds:', feeds.length);
       return feeds;
     } catch (error: unknown) {
@@ -201,8 +234,13 @@ export const storage = {
       const items = await apiRequest<FeedItem[]>(endpoint);
       
       // Only cache if getting all items
+      // Don't fail if caching fails - return the API data anyway
       if (!options?.status && !options?.feedId) {
-        saveToLocalStorage(FEED_ITEMS_KEY, items);
+        try {
+          saveToLocalStorage(FEED_ITEMS_KEY, items);
+        } catch (cacheError) {
+          console.warn('[Storage] Failed to cache items, but continuing with API data:', cacheError);
+        }
       }
       
       console.log('[Storage] Successfully fetched items:', items.length, options);
@@ -481,21 +519,41 @@ export const storage = {
   clearLocalCache: (): void => {
     if (typeof window === 'undefined') return;
     
-    // Clear vibe-reader data caches, but preserve auth-related items
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('vibe-reader-')) {
-        // Only clear data caches, not preferences that might affect UX
-        if (key === 'vibe-reader-feed-items' || key === 'vibe-reader-feeds') {
-          keysToRemove.push(key);
+    try {
+      // Clear vibe-reader data caches, but preserve auth-related items
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('vibe-reader-')) {
+          // Only clear data caches, not preferences that might affect UX
+          if (key === 'vibe-reader-feed-items' || key === 'vibe-reader-feeds') {
+            keysToRemove.push(key);
+          }
         }
       }
+      
+      keysToRemove.forEach(key => {
+        try {
+          localStorage.removeItem(key);
+        } catch (error) {
+          console.warn(`[Cache] Failed to remove ${key}:`, error);
+        }
+      });
+      
+      console.log(`[Cache] Cleared ${keysToRemove.length} cached items from localStorage`);
+    } catch (error) {
+      console.error('[Cache] Error clearing cache:', error);
+      // Try to clear all vibe-reader keys as fallback
+      try {
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('vibe-reader-feed-items') || key.startsWith('vibe-reader-feeds')) {
+            localStorage.removeItem(key);
+          }
+        });
+      } catch (fallbackError) {
+        console.error('[Cache] Fallback clear also failed:', fallbackError);
+      }
     }
-    
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    
-    console.log(`[Cache] Cleared ${keysToRemove.length} cached items from localStorage`);
   },
 
   /**
