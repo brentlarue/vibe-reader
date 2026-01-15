@@ -168,6 +168,61 @@ body {
     @apply underline hover:no-underline;
   }
 
+  .article-content blockquote {
+    @apply border-l-4 pl-6 py-2 my-7 italic;
+    border-color: var(--theme-border);
+    color: var(--theme-text-muted);
+  }
+
+  .article-content img {
+    @apply max-w-full h-auto my-7 rounded;
+  }
+
+  .article-content figure {
+    @apply my-7;
+  }
+
+  .article-content figcaption {
+    @apply text-sm mt-2 text-center;
+    color: var(--theme-text-muted);
+  }
+
+  .article-content pre,
+  .article-content code {
+    @apply text-sm;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  }
+
+  .article-content pre {
+    @apply p-4 my-7 overflow-x-auto rounded;
+    background-color: var(--theme-hover-bg);
+  }
+
+  .article-content code {
+    @apply px-1.5 py-0.5 rounded;
+    background-color: var(--theme-hover-bg);
+  }
+
+  .article-content pre code {
+    @apply p-0 bg-transparent;
+  }
+
+  .article-content hr {
+    @apply my-10 border-0 h-px;
+    background-color: var(--theme-border);
+  }
+
+  .article-content strong,
+  .article-content b {
+    @apply font-semibold;
+    color: var(--theme-text);
+  }
+
+  .article-content em,
+  .article-content i {
+    @apply italic;
+  }
+
   .line-clamp-ellipsis {
     overflow: hidden;
     display: -webkit-box;

@@ -2069,8 +2069,14 @@ app.use('/api/workflows', requireAuth, workflowsRouter);
 // Import evals router
 const evalsRouter = (await import('./routes/evals.js')).default;
 
+// Import ingest router (for single article ingestion)
+const ingestRouter = (await import('./routes/ingest.js')).default;
+
 // Mount evals router with auth middleware
 app.use('/api/evals', requireAuth, evalsRouter);
+
+// Mount ingest router with auth middleware
+app.use('/api/ingest', requireAuth, ingestRouter);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

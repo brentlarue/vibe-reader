@@ -927,6 +927,92 @@ function transformFeedItem(dbItem) {
 }
 
 /**
+ * Get or create the "Links" pseudo-feed for single article ingestion
+ * This feed is used to store individually added articles that don't belong to an RSS feed.
+ * @returns {Promise<Object>} The Links pseudo-feed
+ */
+export async function getOrCreateLinksFeed() {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const env = getAppEnv();
+  const LINKS_FEED_URL = '__links__';
+
+  // Try to get existing links feed
+  const { data: existingFeed, error: fetchError } = await supabase
+    .from('feeds')
+    .select('*')
+    .eq('url', LINKS_FEED_URL)
+    .eq('env', env)
+    .single();
+
+  if (existingFeed) {
+    return {
+      id: existingFeed.id,
+      name: existingFeed.display_name,
+      url: existingFeed.url,
+      sourceType: existingFeed.source_type,
+      rssTitle: existingFeed.rss_title,
+    };
+  }
+
+  // Create the links feed if it doesn't exist
+  if (fetchError?.code === 'PGRST116') {
+    const { data: newFeed, error: createError } = await supabase
+      .from('feeds')
+      .insert({
+        url: LINKS_FEED_URL,
+        display_name: 'Links',
+        rss_title: 'Links',
+        source_type: 'link',
+        env,
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      // Handle race condition - another request may have created it
+      if (createError.code === '23505') {
+        // Unique constraint violation - fetch the existing one
+        const { data: raceFeed } = await supabase
+          .from('feeds')
+          .select('*')
+          .eq('url', LINKS_FEED_URL)
+          .eq('env', env)
+          .single();
+
+        if (raceFeed) {
+          return {
+            id: raceFeed.id,
+            name: raceFeed.display_name,
+            url: raceFeed.url,
+            sourceType: raceFeed.source_type,
+            rssTitle: raceFeed.rss_title,
+          };
+        }
+      }
+      console.error('[DB] Error creating links feed:', createError);
+      throw createError;
+    }
+
+    console.log(`[DB] Created Links pseudo-feed with ID: ${newFeed.id}`);
+    return {
+      id: newFeed.id,
+      name: newFeed.display_name,
+      url: newFeed.url,
+      sourceType: newFeed.source_type,
+      rssTitle: newFeed.rss_title,
+    };
+  }
+
+  if (fetchError) {
+    console.error('[DB] Error fetching links feed:', fetchError);
+    throw fetchError;
+  }
+}
+
+/**
  * Check if a feed item already exists by URL
  * @param {string} feedId - Feed UUID
  * @param {string} url - Item URL

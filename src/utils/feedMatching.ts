@@ -101,6 +101,11 @@ export function itemBelongsToFeed(item: FeedItem, feed: Feed): boolean {
  * @returns The feed's display name, or item.source as fallback
  */
 export function getFeedDisplayName(item: FeedItem, feeds: Feed[]): string {
+  // For link-type items (single articles), always use the stored source (domain)
+  if (item.sourceType === 'link') {
+    return item.source;
+  }
+  
   // First try to find by feedId if available (most reliable)
   if (item.feedId) {
     const feed = feeds.find(f => f.id === item.feedId);

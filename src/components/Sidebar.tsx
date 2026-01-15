@@ -3,8 +3,10 @@ import { useState, useMemo, useEffect } from 'react';
 import { Feed, FeedItem } from '../types';
 import { storage } from '../utils/storage';
 import SettingsMenu from './SettingsMenu';
+import AddModal from './AddModal';
 import { useTheme } from '../contexts/ThemeContext';
 import { itemBelongsToFeed } from '../utils/feedMatching';
+import { apiFetch } from '../utils/apiFetch';
 
 interface SidebarProps {
   feeds: Feed[];
@@ -26,10 +28,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     const hostname = window.location.hostname;
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
   }, []);
-  const [feedUrl, setFeedUrl] = useState('');
-  const [isAddingFeed, setIsAddingFeed] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
   const [editFeedName, setEditFeedName] = useState('');
   
@@ -48,26 +47,9 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     { path: '/archive', label: 'Archive' },
   ];
 
-  // Add workflows link in dev mode
-  if (isDev) {
-    navItems.push({ path: '/workflows/feed-discovery', label: 'Workflows' });
-  }
-
-  const handleAddFeed = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!feedUrl.trim()) {
-      setError('Please enter a feed URL');
-      return;
-    }
-
-    setIsAddingFeed(true);
+  const handleAddFeed = async (feedUrl: string) => {
     let newFeed: Feed | null = null;
     try {
-      // Validate URL
-      new URL(feedUrl.trim());
-
       // Normalize the URL (convert Medium/Substack URLs to RSS feeds)
       const { normalizeFeedUrl, fetchRss } = await import('../utils/rss');
       const normalizedUrl = normalizeFeedUrl(feedUrl.trim());
@@ -89,8 +71,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         onFeedsChange();
       } catch (addError) {
         if (addError instanceof Error && addError.message.includes('already exists')) {
-          setError('This feed is already added');
-          return;
+          throw new Error('This feed is already added');
         }
         throw addError;
       }
@@ -111,14 +92,11 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         // Check if this is a valid feed with no new items, or an invalid feed
         const hasItemsFromFeed = existingItems.some(item => item.source === actualFeedTitle);
         if (!hasItemsFromFeed && newFeed) {
-          setError('No items found. This might not be a valid RSS feed URL.');
           await storage.removeFeed(newFeed.id);
           onFeedsChange();
-          return;
+          throw new Error('No items found. This might not be a valid RSS feed URL.');
         }
       }
-
-      setFeedUrl('');
     } catch (err) {
       // Remove the feed that was just added since it failed
       if (newFeed) {
@@ -131,17 +109,37 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       }
 
       if (err instanceof Error && err.message.includes('already exists')) {
-        setError('This feed is already added');
+        throw new Error('This feed is already added');
       } else if (err instanceof TypeError) {
-        setError('Please enter a valid URL');
+        throw new Error('Please enter a valid URL');
       } else if (err instanceof Error) {
-        setError(err.message);
+        throw err;
       } else {
-        setError('Failed to add feed. Please check the URL and try again.');
+        throw new Error('Failed to add feed. Please check the URL and try again.');
       }
-      console.error('Error adding feed:', err);
-    } finally {
-      setIsAddingFeed(false);
+    }
+  };
+
+  const handleAddArticle = async (articleUrl: string) => {
+    try {
+      const response = await apiFetch('/api/ingest/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: articleUrl }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to add article (${response.status})`);
+      }
+
+      // Trigger refresh of feed lists
+      window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+    } catch (err) {
+      if (err instanceof Error) {
+        throw err;
+      }
+      throw new Error('Failed to add article. Please try again.');
     }
   };
 
@@ -183,18 +181,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
       handleSaveRename(feedId);
     } else if (e.key === 'Escape') {
       handleCancelRename();
-    }
-  };
-
-  const handleRefreshAll = async () => {
-    setIsRefreshing(true);
-    try {
-      await onRefreshFeeds();
-    } catch (err) {
-      console.error('Error refreshing feeds:', err);
-      setError('Failed to refresh feeds. Please try again.');
-    } finally {
-      setIsRefreshing(false);
     }
   };
 
@@ -249,11 +235,11 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     return counts;
   }, [feeds, inboxItems, itemBelongsToFeed]);
 
-  // Sort feeds alphabetically by name (A-Z)
+  // Filter out link-type pseudo-feed and sort alphabetically by name (A-Z)
   const sortedFeeds = useMemo(() => {
-    return [...feeds].sort((a, b) => 
-      a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-    );
+    return [...feeds]
+      .filter(f => f.sourceType !== 'link')
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
   }, [feeds]);
 
   // Note: isCollapsed is handled in AppContent - sidebar is hidden via CSS on desktop
@@ -415,87 +401,25 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
               Feeds
             </h2>
             <button
-              onClick={handleRefreshAll}
-              disabled={isRefreshing || feeds.length === 0}
-              className="text-xs disabled:cursor-not-allowed transition-colors touch-manipulation py-2 px-3 sm:py-0 sm:px-0"
-              style={{
-                color: isRefreshing || feeds.length === 0 ? 'var(--theme-text-muted)' : 'var(--theme-text-secondary)',
-              }}
+              onClick={() => setIsAddModalOpen(true)}
+              className="p-1 transition-colors touch-manipulation"
+              style={{ color: 'var(--theme-text-muted)' }}
               onMouseEnter={(e) => {
-                if (!isRefreshing && feeds.length > 0) {
-                  e.currentTarget.style.color = 'var(--theme-text)';
-                }
+                e.currentTarget.style.color = 'var(--theme-text)';
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
               }}
               onMouseLeave={(e) => {
-                if (!isRefreshing && feeds.length > 0) {
-                  e.currentTarget.style.color = 'var(--theme-text-secondary)';
-                }
+                e.currentTarget.style.color = 'var(--theme-text-muted)';
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
-              title="Refresh all feeds"
+              title="Add"
+              aria-label="Add feed or article"
             >
-              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
             </button>
           </div>
-
-          <form onSubmit={handleAddFeed} className="mb-4">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={feedUrl}
-                onChange={(e) => {
-                  setFeedUrl(e.target.value);
-                  setError(null);
-                }}
-                placeholder="RSS feed URL"
-                className={`flex-1 px-3 py-2.5 sm:px-2 sm:py-1.5 text-sm sm:text-xs border focus:outline-none transition-colors ${
-                  theme === 'light' ? 'placeholder:text-gray-400' :
-                  theme === 'dark' ? 'placeholder:text-gray-400' :
-                  theme === 'sepia' ? 'placeholder:[color:#8B7355]' :
-                  theme === 'hn' ? 'placeholder:[color:#999999]' :
-                  'placeholder:text-gray-400'
-                }`}
-                style={{
-                  borderColor: 'var(--theme-border)',
-                  backgroundColor: 'var(--theme-card-bg)',
-                  color: 'var(--theme-text)',
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--theme-accent)';
-                  e.currentTarget.style.outline = '1px solid var(--theme-accent)';
-                  e.currentTarget.style.outlineOffset = '-1px';
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--theme-border)';
-                  e.currentTarget.style.outline = 'none';
-                }}
-                disabled={isAddingFeed}
-              />
-              <button
-                type="submit"
-                disabled={isAddingFeed}
-                className="px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed transition-colors"
-                style={{
-                  backgroundColor: isAddingFeed ? 'var(--theme-border)' : 'var(--theme-button-bg)',
-                  color: isAddingFeed ? 'var(--theme-text-muted)' : 'var(--theme-button-text)',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isAddingFeed) {
-                    e.currentTarget.style.opacity = '0.9';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isAddingFeed) {
-                    e.currentTarget.style.opacity = '1';
-                  }
-                }}
-              >
-                {isAddingFeed ? '...' : 'Add'}
-              </button>
-            </div>
-            {error && (
-              <p className="mt-1 text-xs" style={{ color: '#dc2626' }}>{error}</p>
-            )}
-          </form>
 
           <div className="space-y-1">
             {sortedFeeds.length === 0 ? (
@@ -679,9 +603,17 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         }}
       >
         <div className="px-4 sm:px-6 pt-4">
-          <SettingsMenu />
+          <SettingsMenu onRefreshFeeds={onRefreshFeeds} feeds={feeds} />
         </div>
       </div>
+
+      {/* Add Modal */}
+      <AddModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAddFeed={handleAddFeed}
+        onAddArticle={handleAddArticle}
+      />
     </div>
   );
 }

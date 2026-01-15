@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
-import { Theme } from '../types';
+import { Theme, Feed } from '../types';
 import { storage } from '../utils/storage';
 import { itemBelongsToFeed } from '../utils/feedMatching';
 import { preferences } from '../utils/preferences';
@@ -13,9 +13,15 @@ const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'yc
   { value: 'hn', label: 'Hacker News', icon: 'yc' },
 ];
 
-export default function SettingsMenu() {
+interface SettingsMenuProps {
+  onRefreshFeeds: () => Promise<void>;
+  feeds: Feed[];
+}
+
+export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProps) {
   const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState({ bottom: 0, left: 0, width: 0 });
   const [lastRefreshTime, setLastRefreshTime] = useState<string | null>(null);
@@ -118,6 +124,21 @@ export default function SettingsMenu() {
       console.error('Logout error:', error);
       // Still redirect to login even if logout request fails
       window.location.href = '/login';
+    }
+  };
+
+  const handleRefreshFeeds = async () => {
+    // Filter to only real feeds (not link pseudo-feed)
+    const realFeeds = feeds.filter(f => f.sourceType !== 'link');
+    if (realFeeds.length === 0) return;
+    
+    setIsRefreshing(true);
+    try {
+      await onRefreshFeeds();
+    } catch (err) {
+      console.error('Error refreshing feeds:', err);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -297,6 +318,32 @@ export default function SettingsMenu() {
               {lastRefreshTime ? formatRefreshTime(lastRefreshTime) : 'Never'}
             </div>
           </div>
+
+          {/* Refresh feeds */}
+          <button
+            onClick={handleRefreshFeeds}
+            disabled={isRefreshing || feeds.filter(f => f.sourceType !== 'link').length === 0}
+            className="w-full text-left px-2 py-2.5 text-sm transition-colors disabled:cursor-not-allowed"
+            style={{
+              color: isRefreshing || feeds.filter(f => f.sourceType !== 'link').length === 0 
+                ? 'var(--theme-text-muted)' 
+                : 'var(--theme-text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isRefreshing && feeds.filter(f => f.sourceType !== 'link').length > 0) {
+                e.currentTarget.style.color = 'var(--theme-text)';
+                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isRefreshing && feeds.filter(f => f.sourceType !== 'link').length > 0) {
+                e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              }
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh feeds'}</span>
+          </button>
 
           {/* Cull the herd */}
           <button
