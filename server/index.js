@@ -266,13 +266,17 @@ app.post('/api/login', async (req, res) => {
   const cookieOptions = {
     maxAge,
     httpOnly: true,
-    sameSite: 'lax',
     path: '/'
   };
   
-  // Only set secure in production (HTTPS)
+  // In production (HTTPS), use sameSite: 'none' to support PWA standalone mode
+  // sameSite: 'lax' doesn't work reliably with iOS PWAs in standalone mode
   if (isProduction) {
     cookieOptions.secure = true;
+    cookieOptions.sameSite = 'none';
+  } else {
+    // For local dev without HTTPS, use 'lax'
+    cookieOptions.sameSite = 'lax';
   }
   
   res.cookie('session', token, cookieOptions);
@@ -282,13 +286,21 @@ app.post('/api/login', async (req, res) => {
 
 // Logout endpoint (public, clears cookie)
 app.post('/api/logout', (req, res) => {
-  res.cookie('session', '', {
+  const cookieOptions = {
     maxAge: 0,
     httpOnly: true,
-    sameSite: 'lax',
-    secure: isProduction,
     path: '/'
-  });
+  };
+  
+  // Match the sameSite setting from login
+  if (isProduction) {
+    cookieOptions.secure = true;
+    cookieOptions.sameSite = 'none';
+  } else {
+    cookieOptions.sameSite = 'lax';
+  }
+  
+  res.cookie('session', '', cookieOptions);
   return res.json({ ok: true });
 });
 
