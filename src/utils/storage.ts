@@ -460,17 +460,45 @@ export const storage = {
   clearLocalCache: (): void => {
     if (typeof window === 'undefined') return;
     
-    // Clear all vibe-reader related localStorage keys
+    // Clear vibe-reader data caches, but preserve auth-related items
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('vibe-reader-')) {
-        keysToRemove.push(key);
+        // Only clear data caches, not preferences that might affect UX
+        if (key === 'vibe-reader-feed-items' || key === 'vibe-reader-feeds') {
+          keysToRemove.push(key);
+        }
       }
     }
     
     keysToRemove.forEach(key => localStorage.removeItem(key));
     
     console.log(`[Cache] Cleared ${keysToRemove.length} cached items from localStorage`);
+  },
+
+  /**
+   * Test API connectivity - useful for debugging sync issues
+   */
+  testConnection: async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch('/api/feeds', {
+        credentials: 'include',
+      });
+      
+      if (response.status === 401) {
+        return { success: false, error: 'Not authenticated - please log in again' };
+      }
+      
+      if (!response.ok) {
+        return { success: false, error: `Server error: ${response.status}` };
+      }
+      
+      // Verify we can parse the response
+      await response.json();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: `Network error: ${error instanceof Error ? error.message : 'Unknown'}` };
+    }
   },
 };

@@ -366,7 +366,14 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
 
           {/* Clear cache */}
           <button
-            onClick={() => {
+            onClick={async () => {
+              // First test if we can reach the server
+              const connectionTest = await storage.testConnection();
+              if (!connectionTest.success) {
+                alert(`Cannot sync with server: ${connectionTest.error}\n\nPlease try logging out and back in.`);
+                return;
+              }
+              
               storage.clearLocalCache();
               setIsOpen(false);
               // Force reload to fetch fresh data from server
