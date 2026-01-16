@@ -11,11 +11,37 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load environment variables FIRST (before any modules that need them)
+// This MUST be synchronous and happen before any imports that read process.env
 import dotenv from 'dotenv';
-dotenv.config({ path: join(__dirname, '..', '.env') });
+const envPath = join(__dirname, '..', '.env');
+const envResult = dotenv.config({ path: envPath });
+if (envResult.error) {
+  console.warn('[ENV] Warning: Could not load .env file:', envResult.error.message);
+  console.warn('[ENV] Attempted path:', envPath);
+} else {
+  console.log('[ENV] Loaded .env file from:', envPath);
+  // Verify key variables are loaded (don't log the actual values)
+  if (process.env.SUPABASE_URL) {
+    console.log('[ENV] ✓ SUPABASE_URL is set');
+  } else {
+    console.warn('[ENV] ⚠ SUPABASE_URL is NOT set in .env file');
+  }
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.log('[ENV] ✓ SUPABASE_SERVICE_ROLE_KEY is set');
+  } else {
+    console.warn('[ENV] ⚠ SUPABASE_SERVICE_ROLE_KEY is NOT set in .env file');
+  }
+}
 
 // Now import Supabase (which needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
-const { isSupabaseConfigured } = await import('./db/supabaseClient.js');
+// Use dynamic import to ensure dotenv.config() has run first
+// The supabaseClient module now uses lazy initialization, so env vars will be read correctly
+const supabaseClientModule = await import('./db/supabaseClient.js');
+const { isSupabaseConfigured } = supabaseClientModule;
+
+// Force initialization now that env vars are loaded
+// This ensures the config log appears in the right order
+isSupabaseConfigured();
 const feedRepo = await import('./db/feedRepository.js');
 const { getAppEnv } = await import('./db/env.js');
 
@@ -123,20 +149,45 @@ function envMiddleware(req, res, next) {
   next();
 }
 
-// Authentication middleware - requires valid session cookie
-function requireAuth(req, res, next) {
+// Authentication middleware - accepts session cookie OR API key
+async function requireAuth(req, res, next) {
   console.log('[AUTH] requireAuth called for:', req.method, req.path);
+  
+  // Check for API key in Authorization header (Bearer token)
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const apiKey = authHeader.substring(7); // Remove "Bearer " prefix
+    
+    try {
+      const apiKeyRepoModule = await import('./db/apiKeyRepository.js');
+      const verification = await apiKeyRepoModule.verifyApiKey(apiKey);
+      
+      if (verification.valid) {
+        console.log('[AUTH] API key verified:', verification.name);
+        req.user = { type: 'api_key', keyId: verification.keyId, name: verification.name };
+        return next();
+      } else {
+        console.log('[AUTH] Invalid or expired API key');
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    } catch (error) {
+      console.error('[AUTH] Error verifying API key:', error);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+  
+  // Fall back to session cookie authentication
   console.log('[AUTH] Cookies received:', req.cookies);
   const token = req.cookies?.session;
   if (!token) {
-    console.log('[AUTH] No session token found, returning 401');
+    console.log('[AUTH] No session token or API key found, returning 401');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
     const payload = verifySession(token, SESSION_SECRET);
     console.log('[AUTH] Session verified successfully:', payload);
-    req.user = payload;
+    req.user = { ...payload, type: 'session' };
     return next();
   } catch (err) {
     console.log('[AUTH] Session verification failed:', err.message);
@@ -2061,8 +2112,99 @@ app.use('/api/debug', requireAuth, llmRouter);
 // Import ingest router (for single article ingestion)
 const ingestRouter = (await import('./routes/ingest.js')).default;
 
+// Import brief router (for daily brief functionality)
+const briefRouter = (await import('./routes/brief.js')).default;
+
 // Mount ingest router with auth middleware
 app.use('/api/ingest', requireAuth, ingestRouter);
+
+// Mount brief router with auth middleware
+app.use('/api/brief', requireAuth, briefRouter);
+
+// ============================================================================
+// API KEY MANAGEMENT
+// ============================================================================
+
+// Import API key repository functions
+import * as apiKeyRepo from './db/apiKeyRepository.js';
+
+// POST /api/keys - Create a new API key
+app.post('/api/keys', requireAuth, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    const { name, expiresInDays } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    // Calculate expiration if provided
+    let expiresAt = null;
+    if (expiresInDays && typeof expiresInDays === 'number' && expiresInDays > 0) {
+      expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + expiresInDays);
+    }
+
+    const result = await apiKeyRepo.createApiKey(name.trim(), expiresAt);
+
+    // Return the key (only shown once!)
+    return res.json({
+      success: true,
+      key: result.key, // Plain key - only shown once!
+      id: result.id,
+      name: result.name,
+      createdAt: result.createdAt,
+      expiresAt: result.expiresAt,
+      warning: 'Save this key now - it will not be shown again!',
+    });
+  } catch (error) {
+    console.error('[API Keys] Error creating key:', error);
+    return res.status(500).json({
+      error: 'Failed to create API key',
+      message: error.message || 'Unknown error',
+    });
+  }
+});
+
+// GET /api/keys - List all API keys (without plain keys)
+app.get('/api/keys', requireAuth, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    const keys = await apiKeyRepo.listApiKeys();
+    return res.json(keys);
+  } catch (error) {
+    console.error('[API Keys] Error listing keys:', error);
+    return res.status(500).json({
+      error: 'Failed to list API keys',
+      message: error.message || 'Unknown error',
+    });
+  }
+});
+
+// DELETE /api/keys/:keyId - Delete an API key
+app.delete('/api/keys/:keyId', requireAuth, async (req, res) => {
+  try {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    const { keyId } = req.params;
+    await apiKeyRepo.deleteApiKey(keyId);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[API Keys] Error deleting key:', error);
+    return res.status(500).json({
+      error: 'Failed to delete API key',
+      message: error.message || 'Unknown error',
+    });
+  }
+});
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

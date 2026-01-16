@@ -25,6 +25,10 @@ export interface FeedItem {
   readingOrder?: ReadingOrder | null;
   fullContent?: string;
   updatedAt?: string; // Timestamp when item was last updated
+  // Daily brief fields
+  audioBriefUrl?: string; // URL to generated audio file
+  audioBriefGeneratedAt?: string; // Timestamp when audio was generated
+  briefOrder?: number; // Order in daily brief (for sorting)
 }
 
 export interface Feed {
@@ -47,4 +51,37 @@ export interface Annotation {
   // Article metadata for display
   articleTitle?: string;
   feedName?: string;
+}
+
+// ============================================================================
+// DAILY BRIEF TYPES
+// ============================================================================
+
+export type BriefRunStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface BriefRun {
+  id: string;
+  date: string; // YYYY-MM-DD format
+  status: BriefRunStatus;
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+  errorDetails?: Record<string, unknown>;
+  metadata?: {
+    articleCount?: number;
+    audioUrl?: string;
+    compliment?: string;
+    totalDuration?: number;
+    [key: string]: unknown;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BriefMetadata {
+  date: string;
+  articleCount: number;
+  feeds: string[];
+  runStatus: BriefRunStatus | null;
+  runMetadata: Record<string, unknown> | null;
 }

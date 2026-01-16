@@ -1,0 +1,259 @@
+{
+  "name": "Daily Brief - Data Collection (Dev)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-1",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "date-assignment",
+              "name": "date",
+              "value": "={{ $now.toISO().split('T')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "api-url-assignment",
+              "name": "apiUrl",
+              "value": "http://localhost:3001",
+              "type": "string"
+            },
+            {
+              "id": "api-key-assignment",
+              "name": "apiKey",
+              "value": "REPLACE_WITH_YOUR_DEV_API_KEY",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-date",
+      "name": "Set Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Set Config').item.json.apiUrl }}/api/brief/refresh",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $('Set Config').item.json.apiKey }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "refresh-feeds",
+      "name": "Refresh Feeds",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Set Config').item.json.apiUrl }}/api/brief/items",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $('Set Config').item.json.date }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $('Set Config').item.json.apiKey }}"
+            }
+          ]
+        }
+      },
+      "id": "get-daily-items",
+      "name": "Get Daily Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter items that don't have summaries\nconst items = $input.all();\nconst filtered = items.filter(item => {\n  const summary = item.json.aiSummary;\n  return !summary || summary.trim() === '';\n});\nreturn filtered;"
+      },
+      "id": "filter-no-summary",
+      "name": "Filter Items Without Summaries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Set Config').item.json.apiUrl }}/api/brief/metadata",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $('Set Config').item.json.date }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $('Set Config').item.json.apiKey }}"
+            }
+          ]
+        }
+      },
+      "id": "get-metadata",
+      "name": "Get Brief Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Set Config').item.json.apiUrl }}/api/brief/runs",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $('Set Config').item.json.date }}"
+            },
+            {
+              "name": "status",
+              "value": "running"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({ articleCount: $('Get Daily Items').item.json.length, feeds: $('Get Brief Metadata').item.json.feeds }) }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $('Set Config').item.json.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "set-run-running",
+      "name": "Set Run Status: Running",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Set Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Config": {
+      "main": [
+        [
+          {
+            "node": "Refresh Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh Feeds": {
+      "main": [
+        [
+          {
+            "node": "Get Daily Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Daily Items": {
+      "main": [
+        [
+          {
+            "node": "Filter Items Without Summaries",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Brief Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Items Without Summaries": {
+      "main": [
+        []
+      ]
+    },
+    "Get Brief Metadata": {
+      "main": [
+        [
+          {
+            "node": "Set Run Status: Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Run Status: Running": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-15T00:00:00.000Z",
+  "versionId": "1"
+}

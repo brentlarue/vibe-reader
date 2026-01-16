@@ -922,6 +922,9 @@ function transformFeedItem(dbItem) {
     status: dbItem.status,
     paywallStatus: dbItem.paywall_status,
     readingOrder: dbItem.reading_order ?? null,
+    audioBriefUrl: dbItem.audio_brief_url,
+    audioBriefGeneratedAt: dbItem.audio_brief_generated_at,
+    briefOrder: dbItem.brief_order,
     updatedAt: dbItem.updated_at,
   };
 }

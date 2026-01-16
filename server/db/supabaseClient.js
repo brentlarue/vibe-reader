@@ -8,41 +8,68 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Lazy initialization - read env vars when first accessed, not at module load time
+// This ensures dotenv.config() has run first
+let supabaseClient = null;
+let initialized = false;
 
-// Log configuration status on startup
-console.log('=== Supabase Configuration ===');
-console.log('SUPABASE_URL:', supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'NOT SET');
-console.log('SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? `${supabaseServiceKey.substring(0, 20)}...` : 'NOT SET');
+function initializeSupabase() {
+  if (initialized) {
+    return supabaseClient;
+  }
+  
+  initialized = true;
+  
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Validate environment variables
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ ERROR: Supabase environment variables not configured!');
-  console.error('   Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment.');
-  console.error('   Without Supabase, data will be lost on each deployment!');
-} else {
-  console.log('✓ Supabase configured - data will persist in cloud database');
-}
-console.log('==============================');
+  // Log configuration status on startup
+  console.log('=== Supabase Configuration ===');
+  console.log('SUPABASE_URL:', supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'NOT SET');
+  console.log('SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? `${supabaseServiceKey.substring(0, 20)}...` : 'NOT SET');
 
-// Create Supabase client with service role key
-// Service role key bypasses Row Level Security (RLS)
-const supabase = supabaseUrl && supabaseServiceKey 
-  ? createClient(supabaseUrl, supabaseServiceKey, {
+  // Validate environment variables
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('❌ ERROR: Supabase environment variables not configured!');
+    console.error('   Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment.');
+    console.error('   Without Supabase, data will be lost on each deployment!');
+    supabaseClient = null;
+  } else {
+    console.log('✓ Supabase configured - data will persist in cloud database');
+    // Create Supabase client with service role key
+    // Service role key bypasses Row Level Security (RLS)
+    supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
       },
-    })
-  : null;
+    });
+  }
+  console.log('==============================');
+  
+  return supabaseClient;
+}
+
+/**
+ * Get the Supabase client (lazy initialization)
+ * @returns {Object|null} Supabase client or null
+ */
+function getSupabase() {
+  if (!initialized) {
+    initializeSupabase();
+  }
+  return supabaseClient;
+}
 
 /**
  * Check if Supabase is properly configured
  * @returns {boolean} True if Supabase client is available
  */
 export function isSupabaseConfigured() {
-  const configured = supabase !== null;
+  if (!initialized) {
+    initializeSupabase();
+  }
+  const configured = supabaseClient !== null;
   // Log on first check to help debug
   if (!configured) {
     console.warn('[DB] isSupabaseConfigured() returned false - using file storage');
@@ -50,5 +77,18 @@ export function isSupabaseConfigured() {
   return configured;
 }
 
-export { supabase };
+// Export supabase as a Proxy to maintain backward compatibility
+// This allows existing code like `supabase.from('table')` to work
+// while ensuring lazy initialization
+export const supabase = new Proxy({}, {
+  get(target, prop) {
+    const client = getSupabase();
+    if (!client) return undefined;
+    const value = client[prop];
+    if (typeof value === 'function') {
+      return value.bind(client);
+    }
+    return value;
+  }
+});
 
