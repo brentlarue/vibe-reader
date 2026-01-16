@@ -224,7 +224,7 @@ export async function getBriefRun(date) {
  * @param {number} limit - Number of runs to fetch
  * @returns {Promise<Array>} List of runs
  */
-export async function getRecentBriefRuns(limit = 10) {
+export async function getRecentBriefRuns(limit = 10, offset = 0) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -236,7 +236,7 @@ export async function getRecentBriefRuns(limit = 10) {
     .select('*')
     .eq('env', env)
     .order('date', { ascending: false })
-    .limit(limit);
+    .range(offset, offset + limit - 1);
 
   if (error) {
     console.error('[DB] Error fetching recent brief runs:', error);

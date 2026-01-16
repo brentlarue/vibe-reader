@@ -41,11 +41,11 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
   const navItems = [
     { path: '/inbox', label: 'Inbox' },
+    { path: '/brief', label: 'Daily Brief' },
     { path: '/saved', label: 'Later' },
     { path: '/bookmarks', label: 'Bookmarks' },
     { path: '/notes', label: 'Notes' },
     { path: '/archive', label: 'Archive' },
-    { path: '/brief', label: 'Daily Brief' },
   ];
 
   const handleAddFeed = async (feedUrl: string) => {

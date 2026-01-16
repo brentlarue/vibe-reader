@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BriefPlayer from './BriefPlayer';
-import { BriefRun } from '../types';
+import { BriefRun, FeedItem } from '../types';
 
 const WORKFLOW_STEPS = [
   { status: 'running', step: 'Refreshing feeds...' },
@@ -12,37 +12,229 @@ const WORKFLOW_STEPS = [
   { status: 'completed', step: 'Complete!' },
 ];
 
+interface BriefCard {
+  date: string;
+  run: BriefRun | null;
+  audioUrl: string | null;
+  articleCount: number;
+  thumbnail: string | null;
+  items: FeedItem[];
+}
+
+// Extract first image from HTML content
+const extractFirstImage = (html: string): string | null => {
+  if (!html) return null;
+  
+  // Try to find img tags
+  const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (imgMatch && imgMatch[1]) {
+    return imgMatch[1];
+  }
+  
+  // Try alternative img syntax
+  const imgMatch2 = html.match(/<img[^>]+src=([^\s>]+)/i);
+  if (imgMatch2 && imgMatch2[1]) {
+    return imgMatch2[1].replace(/["']/g, '');
+  }
+  
+  return null;
+};
+
 export default function BriefPage() {
-  const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
-  const [selectedDate, setSelectedDate] = useState<string>(date || new Date().toISOString().split('T')[0]);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [articleCount, setArticleCount] = useState<number>(0);
+  const [briefs, setBriefs] = useState<BriefCard[]>([]);
+  const [selectedBrief, setSelectedBrief] = useState<BriefCard | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState<string>('');
-  const [briefRuns, setBriefRuns] = useState<BriefRun[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const loadingRef = useRef<HTMLDivElement>(null);
 
-  // Update selected date when URL param changes
-  useEffect(() => {
-    if (date) {
-      setSelectedDate(date);
+  const LIMIT = 10;
+
+  // Generate mock sample data for dev only
+  const generateMockBriefs = useCallback((): BriefCard[] => {
+    const hostname = window.location.hostname;
+    const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
+    
+    if (!isDev) return [];
+
+    const mockBriefs: BriefCard[] = [];
+    const today = new Date();
+    
+    for (let i = 1; i <= 12; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      mockBriefs.push({
+        date: dateStr,
+        run: {
+          id: `mock-${dateStr}`,
+          date: dateStr,
+          status: 'completed',
+          metadata: {
+            articleCount: Math.floor(Math.random() * 10) + 3,
+            audioUrl: `https://example.com/audio-briefs/${dateStr}.mp3`,
+          },
+          createdAt: date.toISOString(),
+          updatedAt: date.toISOString(),
+          startedAt: date.toISOString(),
+          completedAt: date.toISOString(),
+        },
+        audioUrl: `https://example.com/audio-briefs/${dateStr}.mp3`,
+        articleCount: Math.floor(Math.random() * 10) + 3,
+        thumbnail: `https://picsum.photos/seed/${dateStr}/400/400`,
+        items: [],
+      });
     }
-  }, [date]);
+    
+    return mockBriefs;
+  }, []);
 
-  // Load brief data when selected date changes
+  // Load briefs
+  const loadBriefs = useCallback(async (startOffset: number = 0, append: boolean = false) => {
+    try {
+      if (!append) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+      setError(null);
+
+      // Get recent brief runs
+      const runsResponse = await fetch(`/api/brief/runs?limit=${LIMIT}&offset=${startOffset}`, {
+        credentials: 'include',
+      });
+
+      if (!runsResponse.ok) {
+        throw new Error('Failed to load briefs');
+      }
+
+      const runs: BriefRun[] = await runsResponse.json();
+      
+      if (runs.length < LIMIT) {
+        setHasMore(false);
+      }
+
+      // Get storage URL for constructing audio URLs
+      const storageUrlResponse = await fetch('/api/brief/storage-url', {
+        credentials: 'include',
+      });
+      const storageUrl = storageUrlResponse.ok ? (await storageUrlResponse.json()).storageUrl : null;
+
+      // Load items and metadata for each brief
+      const briefCards: BriefCard[] = await Promise.all(
+        runs.map(async (run) => {
+          // Try to get items for this date
+          let items: FeedItem[] = [];
+          let articleCount = 0;
+          let thumbnail: string | null = null;
+
+          try {
+            const itemsResponse = await fetch(`/api/brief/items?date=${run.date}`, {
+              credentials: 'include',
+            });
+            if (itemsResponse.ok) {
+              items = await itemsResponse.json();
+              articleCount = items.length;
+
+              // Extract first image from items
+              for (const item of items) {
+                const img = extractFirstImage(item.fullContent || item.contentSnippet || '');
+                if (img) {
+                  thumbnail = img;
+                  break;
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Error loading items for brief:', run.date, err);
+          }
+
+          // Determine audio URL
+          let audioUrl: string | null = null;
+          if (run.metadata?.audioUrl) {
+            audioUrl = run.metadata.audioUrl;
+          } else if (storageUrl && run.status === 'completed') {
+            audioUrl = `${storageUrl}/${run.date}.mp3`;
+          }
+
+          return {
+            date: run.date,
+            run,
+            audioUrl,
+            articleCount: run.metadata?.articleCount || articleCount,
+            thumbnail,
+            items,
+          };
+        })
+      );
+
+      if (append) {
+        setBriefs((prev) => [...prev, ...briefCards]);
+      } else {
+        // Merge with mock briefs in dev mode
+        const mockBriefs = generateMockBriefs();
+        const allBriefs = [...briefCards, ...mockBriefs];
+        
+        // Remove duplicates by date (real briefs take priority)
+        const dateMap = new Map<string, BriefCard>();
+        allBriefs.forEach((brief) => {
+          if (!dateMap.has(brief.date)) {
+            dateMap.set(brief.date, brief);
+          }
+        });
+        
+        setBriefs(Array.from(dateMap.values()).sort((a, b) => b.date.localeCompare(a.date)));
+      }
+
+      setOffset(startOffset + briefCards.length);
+    } catch (err) {
+      console.error('Error loading briefs:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load briefs');
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, [generateMockBriefs]);
+
+  // Initial load
   useEffect(() => {
-    loadBriefData(selectedDate);
-  }, [selectedDate]);
+    loadBriefs(0, false);
+  }, [loadBriefs]);
+
+  // Lazy load on scroll
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadBriefs(offset, true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadingRef.current) {
+      observer.observe(loadingRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, offset, loadBriefs]);
 
   // Poll for brief run status when generating
   useEffect(() => {
-    if (!isGenerating || !selectedDate) return;
+    if (!isGenerating) return;
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/brief/runs/${selectedDate}`, {
+        const today = new Date().toISOString().split('T')[0];
+        const response = await fetch(`/api/brief/runs/${today}`, {
           credentials: 'include',
         });
 
@@ -51,7 +243,6 @@ export default function BriefPage() {
 
           // Update generation step based on status
           if (run.status === 'running') {
-            // Estimate step based on time elapsed or metadata
             const stepIndex = Math.min(
               Math.floor((Date.now() - new Date(run.startedAt || run.createdAt).getTime()) / 30000),
               WORKFLOW_STEPS.length - 2
@@ -60,8 +251,8 @@ export default function BriefPage() {
           } else if (run.status === 'completed') {
             setGenerationStep('Complete!');
             setIsGenerating(false);
-            // Reload brief data to show player
-            await loadBriefData(selectedDate);
+            // Reload briefs
+            await loadBriefs(0, false);
           } else if (run.status === 'failed') {
             setGenerationStep('Failed');
             setIsGenerating(false);
@@ -71,85 +262,10 @@ export default function BriefPage() {
       } catch (err) {
         console.error('Error polling brief status:', err);
       }
-    }, 2000); // Poll every 2 seconds
+    }, 2000);
 
     return () => clearInterval(pollInterval);
-  }, [isGenerating, selectedDate]);
-
-  // Load list of recent brief runs
-  useEffect(() => {
-    loadBriefRuns();
-  }, []);
-
-  const loadBriefRuns = async () => {
-    try {
-      const response = await fetch('/api/brief/runs?limit=30', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const runs: BriefRun[] = await response.json();
-        setBriefRuns(runs);
-      }
-    } catch (err) {
-      console.error('Error loading brief runs:', err);
-    }
-  };
-
-  const loadBriefData = async (briefDate: string) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      setAudioUrl(null);
-
-      // Get brief metadata
-      const metadataResponse = await fetch(`/api/brief/metadata?date=${briefDate}`, {
-        credentials: 'include',
-      });
-
-      if (!metadataResponse.ok) {
-        if (metadataResponse.status === 404) {
-          setIsLoading(false);
-          return;
-        }
-        throw new Error('Failed to load brief metadata');
-      }
-
-      const metadata = await metadataResponse.json();
-      setArticleCount(metadata.articleCount || 0);
-
-      // Get brief run status
-      const runsResponse = await fetch(`/api/brief/runs/${briefDate}`, {
-        credentials: 'include',
-      });
-
-      if (runsResponse.ok) {
-        const run: BriefRun = await runsResponse.json();
-
-        // Check if metadata contains audio URL
-        if (run.metadata?.audioUrl) {
-          setAudioUrl(run.metadata.audioUrl);
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // Fallback: Construct URL from date
-      const storageUrlResponse = await fetch(`/api/brief/storage-url`, {
-        credentials: 'include',
-      });
-
-      if (storageUrlResponse.ok) {
-        const { storageUrl } = await storageUrlResponse.json();
-        const constructedUrl = `${storageUrl}/${briefDate}.mp3`;
-        setAudioUrl(constructedUrl);
-      }
-    } catch (err) {
-      console.error('Error loading brief:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load daily brief');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [isGenerating, loadBriefs]);
 
   const handleGenerate = async () => {
     try {
@@ -157,13 +273,14 @@ export default function BriefPage() {
       setError(null);
       setGenerationStep('Starting...');
 
+      const today = new Date().toISOString().split('T')[0];
       const response = await fetch('/api/brief/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ date: selectedDate }),
+        body: JSON.stringify({ date: today }),
       });
 
       if (!response.ok) {
@@ -172,7 +289,6 @@ export default function BriefPage() {
       }
 
       setGenerationStep('Refreshing feeds...');
-      // Polling will handle status updates
     } catch (err) {
       console.error('Error generating brief:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate brief');
@@ -180,152 +296,129 @@ export default function BriefPage() {
     }
   };
 
-  const navigateToDate = (newDate: string) => {
-    setSelectedDate(newDate);
-    navigate(`/brief/${newDate}`);
-  };
-
-  const getPreviousDate = (currentDate: string): string => {
-    const date = new Date(currentDate);
-    date.setDate(date.getDate() - 1);
-    return date.toISOString().split('T')[0];
-  };
-
-  const getNextDate = (currentDate: string): string => {
-    const date = new Date(currentDate);
-    date.setDate(date.getDate() + 1);
-    return date.toISOString().split('T')[0];
+  const handleBriefClick = (brief: BriefCard) => {
+    if (brief.audioUrl) {
+      setSelectedBrief(brief);
+    }
   };
 
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (dateStr === today.toISOString().split('T')[0]) {
+      return 'Today';
+    } else if (dateStr === yesterday.toISOString().split('T')[0]) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+      });
+      }
+  };
+
+  const formatDateLong = (dateStr: string): string => {
+    const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
       day: 'numeric',
-      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
     });
   };
 
-  const hasBrief = audioUrl !== null;
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
-  const canGoNext = getNextDate(selectedDate) <= new Date().toISOString().split('T')[0];
+  // If a brief is selected, show player
+  if (selectedBrief) {
+    return (
+      <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
+        <BriefPlayer
+          audioUrl={selectedBrief.audioUrl!}
+          date={selectedBrief.date}
+          articleCount={selectedBrief.articleCount}
+          thumbnail={selectedBrief.thumbnail}
+          onClose={() => setSelectedBrief(null)}
+          onDelete={async () => {
+            // TODO: Implement delete brief functionality
+            // This would delete the brief run and audio file
+            console.log('Delete brief:', selectedBrief.date);
+            // For now, just close the player
+            setSelectedBrief(null);
+            // Reload briefs to update the list
+            await loadBriefs(0, false);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Sort briefs by date (most recent first)
+  const sortedBriefs = briefs.length > 0 ? [...briefs].sort((a, b) => b.date.localeCompare(a.date)) : [];
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 py-8">
-      {/* Header with date navigation */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold mb-2" style={{ color: 'var(--theme-text)' }}>
-            Daily Brief
-          </h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigateToDate(getPreviousDate(selectedDate))}
-              className="px-3 py-1 text-sm border transition-colors touch-manipulation"
-              style={{
-                borderColor: 'var(--theme-border)',
-                backgroundColor: 'transparent',
-                color: 'var(--theme-text)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
-                e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--theme-border)';
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-            >
-              ← Previous
-            </button>
-            <span className="text-sm px-3" style={{ color: 'var(--theme-text-muted)' }}>
-              {formatDate(selectedDate)}
-            </span>
-            <button
-              onClick={() => navigateToDate(getNextDate(selectedDate))}
-              disabled={!canGoNext}
-              className="px-3 py-1 text-sm border transition-colors touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                borderColor: 'var(--theme-border)',
-                backgroundColor: 'transparent',
-                color: 'var(--theme-text)',
-              }}
-              onMouseEnter={(e) => {
-                if (canGoNext) {
-                  e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
-                  e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (canGoNext) {
-                  e.currentTarget.style.borderColor = 'var(--theme-border)';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }
-              }}
-            >
-              Next →
-            </button>
-            {!isToday && (
-              <button
-                onClick={() => navigateToDate(new Date().toISOString().split('T')[0])}
-                className="px-3 py-1 text-sm border transition-colors touch-manipulation ml-2"
-                style={{
-                  borderColor: 'var(--theme-border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--theme-text)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
-                  e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--theme-border)';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                Today
-              </button>
-            )}
-          </div>
-        </div>
+    <div className="w-full max-w-3xl mx-auto mt-14 lg:mt-0 pb-6 sm:pb-8 lg:pb-12">
+      {/* Header with Generate button */}
+      <div className="flex items-center justify-between mb-8 sm:mb-12">
+        <h1 
+          className="text-2xl sm:text-3xl font-bold"
+          style={{ color: 'var(--theme-text)' }}
+        >
+          Daily Brief
+        </h1>
+        <button
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          className="px-4 py-2 text-sm font-medium border transition-colors touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            backgroundColor: 'transparent',
+            borderColor: 'var(--theme-border)',
+            color: 'var(--theme-text-secondary)',
+          }}
+          onMouseEnter={(e) => {
+            if (!isGenerating) {
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+              e.currentTarget.style.borderColor = 'var(--theme-text-muted)';
+              e.currentTarget.style.color = 'var(--theme-text)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isGenerating) {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.borderColor = 'var(--theme-border)';
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+            }
+          }}
+        >
+          {isGenerating ? 'Generating...' : 'Generate Brief'}
+        </button>
       </div>
 
-      {/* Loading state */}
-      {isLoading && !isGenerating && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{ borderColor: 'var(--theme-text-muted)' }}></div>
-            <p style={{ color: 'var(--theme-text-muted)' }}>Loading...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Generation in progress */}
+      {/* Generation progress */}
       {isGenerating && (
-        <div 
-          className="p-6 rounded-lg border mb-6"
+        <div
+          className="p-4 border mb-6"
           style={{
             backgroundColor: 'var(--theme-card-bg)',
             borderColor: 'var(--theme-border)',
           }}
         >
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-2">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: 'var(--theme-accent)' }}></div>
             <p className="font-medium" style={{ color: 'var(--theme-text)' }}>
-              Generating brief...
+              {generationStep || 'Starting...'}
             </p>
           </div>
-          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-            {generationStep || 'Starting...'}
-          </p>
         </div>
       )}
 
       {/* Error state */}
-      {error && !isGenerating && (
-        <div 
-          className="p-4 rounded-lg border mb-6"
+      {error && (
+        <div
+          className="p-4 border mb-6"
           style={{
             backgroundColor: 'var(--theme-error-bg, rgba(220, 38, 38, 0.1))',
             borderColor: 'var(--theme-error-border, rgba(220, 38, 38, 0.3))',
@@ -336,103 +429,127 @@ export default function BriefPage() {
         </div>
       )}
 
-      {/* No brief available - show generate button */}
-      {!isLoading && !hasBrief && !isGenerating && (
-        <div 
-          className="p-8 rounded-lg border text-center"
-          style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: 'var(--theme-border)',
-          }}
-        >
-          <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>
-            No brief yet
-          </p>
-          <p className="text-sm mb-6" style={{ color: 'var(--theme-text-muted)' }}>
-            Nothing ready for {formatDate(selectedDate)} yet.
-          </p>
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="px-6 py-2 rounded transition-colors touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: 'var(--theme-button-bg)',
-              color: 'var(--theme-button-text)',
-            }}
-            onMouseEnter={(e) => {
-              if (!isGenerating) {
-                e.currentTarget.style.opacity = '0.9';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isGenerating) {
-                e.currentTarget.style.opacity = '1';
-              }
-            }}
-          >
-            Generate Daily Brief
-          </button>
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{ borderColor: 'var(--theme-text-muted)' }}></div>
+            <p style={{ color: 'var(--theme-text-muted)' }}>Loading briefs...</p>
+          </div>
         </div>
       )}
 
-      {/* Brief player */}
-      {!isLoading && hasBrief && !isGenerating && (
-        <BriefPlayer
-          audioUrl={audioUrl!}
-          date={selectedDate}
-          articleCount={articleCount}
-        />
-      )}
+      {/* Medium-style card list */}
+      {!isLoading && sortedBriefs.length > 0 && (
+        <div>
+          {sortedBriefs.map((brief, index) => (
+            <button
+              key={brief.date}
+              onClick={() => handleBriefClick(brief)}
+              disabled={!brief.audioUrl}
+              className="w-full text-left py-6 sm:py-8 border-b transition-opacity touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed group"
+              style={{ 
+                color: 'var(--theme-text)',
+                borderColor: 'var(--theme-border)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '0.8';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '1';
+              }}
+            >
+              <div className="flex gap-4 lg:gap-6">
+                {/* Text content - left side */}
+                <div className="flex-1 min-w-0">
+                  {/* Date */}
+                  <div 
+                    className="text-sm mb-2"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    {formatDate(brief.date)}
+                  </div>
 
-      {/* Recent briefs list */}
-      {briefRuns.length > 0 && (
-        <div className="mt-12">
-          <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--theme-text)' }}>
-            Recent Briefs
-          </h2>
-          <div className="space-y-2">
-            {briefRuns.slice(0, 10).map((run) => {
-              const isSelected = run.date === selectedDate;
-              const hasAudio = run.status === 'completed' && (run.metadata?.audioUrl || true);
-              return (
-                <button
-                  key={run.id}
-                  onClick={() => navigateToDate(run.date)}
-                  className="w-full text-left p-3 rounded border transition-colors touch-manipulation"
-                  style={{
-                    backgroundColor: isSelected ? 'var(--theme-hover-bg)' : 'var(--theme-card-bg)',
-                    borderColor: isSelected ? 'var(--theme-accent)' : 'var(--theme-border)',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = 'var(--theme-card-bg)';
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium" style={{ color: 'var(--theme-text)' }}>
-                        {formatDate(run.date)}
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: 'var(--theme-text-muted)' }}>
-                        {run.metadata?.articleCount || 0} articles · {run.status}
-                      </p>
-                    </div>
-                    {hasAudio && (
-                      <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-                        ▶
-                      </span>
+                  {/* Title */}
+                  <h2 
+                    className="text-xl sm:text-2xl font-bold mb-3 leading-tight"
+                    style={{ color: 'var(--theme-text)' }}
+                  >
+                    {formatDateLong(brief.date)}
+                  </h2>
+
+                  {/* Metadata line: article count and play button */}
+                  <div 
+                    className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-sm"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    <span>{brief.articleCount} {brief.articleCount === 1 ? 'article' : 'articles'}</span>
+                    {brief.audioUrl && (
+                      <>
+                        <span>·</span>
+                        <span 
+                          className="font-medium transition-colors"
+                          style={{ color: 'var(--theme-accent)' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.8';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBriefClick(brief);
+                          }}
+                        >
+                          ▶ Play
+                        </span>
+                      </>
                     )}
                   </div>
-                </button>
-              );
-            })}
+                </div>
+
+                {/* Thumbnail - right side, 3x2 landscape - no hover effects */}
+                {brief.thumbnail && (
+                  <div 
+                    className="flex-shrink-0 w-32 sm:w-40 lg:w-48 aspect-[3/2] overflow-hidden"
+                    style={{ backgroundColor: 'var(--theme-border)' }}
+                  >
+                    <img
+                      src={brief.thumbnail}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      style={{ pointerEvents: 'none' }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Loading more indicator */}
+      {isLoadingMore && (
+        <div ref={loadingRef} className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-2" style={{ borderColor: 'var(--theme-text-muted)' }}></div>
+            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>Loading more...</p>
           </div>
+        </div>
+      )}
+
+      {/* No briefs state */}
+      {!isLoading && sortedBriefs.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-lg mb-2 font-medium" style={{ color: 'var(--theme-text)' }}>
+            No briefs yet
+          </p>
+          <p className="text-sm mb-6" style={{ color: 'var(--theme-text-muted)' }}>
+            Generate your first daily brief to get started.
+          </p>
         </div>
       )}
     </div>

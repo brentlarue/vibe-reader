@@ -240,7 +240,8 @@ router.get('/runs', async (req, res) => {
     }
 
     const limit = parseInt(req.query.limit) || 10;
-    const runs = await briefRepo.getRecentBriefRuns(limit);
+    const offset = parseInt(req.query.offset) || 0;
+    const runs = await briefRepo.getRecentBriefRuns(limit, offset);
     
     return res.json(runs);
   } catch (error) {
