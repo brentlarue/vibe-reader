@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import BriefPlayer from './BriefPlayer';
-import { BriefRun, BriefRunStatus } from '../types';
+import { BriefRun } from '../types';
 
 const WORKFLOW_STEPS = [
   { status: 'running', step: 'Refreshing feeds...' },
@@ -23,7 +23,6 @@ export default function BriefPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState<string>('');
   const [briefRuns, setBriefRuns] = useState<BriefRun[]>([]);
-  const [currentRun, setCurrentRun] = useState<BriefRun | null>(null);
 
   // Update selected date when URL param changes
   useEffect(() => {
@@ -49,7 +48,6 @@ export default function BriefPage() {
 
         if (response.ok) {
           const run: BriefRun = await response.json();
-          setCurrentRun(run);
 
           // Update generation step based on status
           if (run.status === 'running') {
@@ -126,7 +124,6 @@ export default function BriefPage() {
 
       if (runsResponse.ok) {
         const run: BriefRun = await runsResponse.json();
-        setCurrentRun(run);
 
         // Check if metadata contains audio URL
         if (run.metadata?.audioUrl) {
