@@ -261,6 +261,44 @@ Create an agentic workflow using self-hosted n8n to generate a daily audio brief
 
 ---
 
+## Milestone 7: Error Handling & Cost Tracking
+**Goal:** Add robust error handling and cost monitoring to the summary generation workflow
+
+### Tasks
+1. **Error handling for summary generation**
+   - Add retry logic for failed OpenAI API calls (retry up to 2 times)
+   - Skip items that fail after 2 retries (log error, continue with next item)
+   - Add error logging to `daily_brief_runs` table metadata
+   - Handle rate limit errors gracefully (exponential backoff)
+
+2. **Error handling for save operations**
+   - Retry failed save operations (POST /api/items/:id/summary)
+   - Log which items failed to save
+   - Continue processing other items even if one save fails
+
+3. **Cost tracking and logging**
+   - Extract token usage from OpenAI responses
+   - Log token counts per article in workflow metadata
+   - Calculate estimated costs (input tokens × $0.15/1M + output tokens × $0.60/1M)
+   - Store cost data in `daily_brief_runs` table metadata
+   - Add summary cost to brief metadata endpoint
+
+4. **Workflow status updates**
+   - Update `daily_brief_runs` status to "failed" if critical errors occur
+   - Store error messages and details in metadata
+   - Add retry capability (mark run as failed, allow manual retry)
+
+### Deliverables
+- Robust error handling in n8n workflow
+- Cost tracking and logging
+- Error reporting in database
+- Workflow continues processing even when individual items fail
+
+### Estimated Timeline
+- **Milestone 7:** 1-2 days
+
+---
+
 ## Technical Considerations
 
 ### Authentication
@@ -340,8 +378,9 @@ Create an agentic workflow using self-hosted n8n to generate a daily audio brief
 - **Milestone 4:** 2-3 days
 - **Milestone 5:** 3-4 days
 - **Milestone 6:** 2-3 days
+- **Milestone 7:** 1-2 days (Error Handling & Cost Tracking)
 
-**Total:** ~12-18 days of focused work
+**Total:** ~13-20 days of focused work
 
 ---
 
