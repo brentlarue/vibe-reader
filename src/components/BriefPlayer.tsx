@@ -9,7 +9,7 @@ interface BriefPlayerProps {
   onDelete?: () => void;
 }
 
-export default function BriefPlayer({ audioUrl, date, articleCount, thumbnail, onClose, onDelete }: BriefPlayerProps) {
+export default function BriefPlayer({ audioUrl, date, thumbnail, onClose, onDelete }: BriefPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -141,13 +141,6 @@ export default function BriefPlayer({ audioUrl, date, articleCount, thumbnail, o
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  const formattedDateFull = new Date(date).toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
 
   // Format date for display: "Friday, January 16" (mobile) or full (web)
   const formattedDate = new Date(date).toLocaleDateString('en-US', {

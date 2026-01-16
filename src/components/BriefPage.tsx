@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import BriefPlayer from './BriefPlayer';
 import { BriefRun, FeedItem } from '../types';
 
@@ -41,7 +40,6 @@ const extractFirstImage = (html: string): string | null => {
 };
 
 export default function BriefPage() {
-  const navigate = useNavigate();
   const [briefs, setBriefs] = useState<BriefCard[]>([]);
   const [selectedBrief, setSelectedBrief] = useState<BriefCard | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -442,7 +440,7 @@ export default function BriefPage() {
       {/* Medium-style card list */}
       {!isLoading && sortedBriefs.length > 0 && (
         <div>
-          {sortedBriefs.map((brief, index) => (
+          {sortedBriefs.map((brief) => (
             <button
               key={brief.date}
               onClick={() => handleBriefClick(brief)}
