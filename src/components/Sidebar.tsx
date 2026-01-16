@@ -45,6 +45,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     { path: '/bookmarks', label: 'Bookmarks' },
     { path: '/notes', label: 'Notes' },
     { path: '/archive', label: 'Archive' },
+    { path: '/brief', label: 'Daily Brief' },
   ];
 
   const handleAddFeed = async (feedUrl: string) => {

@@ -370,6 +370,53 @@ Create an agentic workflow using self-hosted n8n to generate a daily audio brief
 
 ---
 
+## Milestone 8: Brief Navigation & Inline Player
+
+**Goal:** Create a polished brief browsing experience with inline player, date navigation, and workflow triggering.
+
+### Tasks
+
+1. **Backend: Workflow Trigger Endpoint**
+   - Create `POST /api/brief/generate` endpoint
+   - Accepts `date` parameter (optional, defaults to today)
+   - Triggers n8n workflow via webhook
+   - Returns workflow execution ID and status
+
+2. **Frontend: Inline Player Component**
+   - Convert `BriefPlayer` from full-screen to inline component
+   - Style using theme CSS variables (light, dark, sepia, hn)
+   - Remove full-screen overlay, make it part of page layout
+   - Keep all playback controls (play/pause, progress, time)
+
+3. **Frontend: Brief List & Navigation**
+   - Update `BriefPage` to show list of available briefs
+   - Add date picker/navigation (previous/next day buttons)
+   - Show brief status (available, generating, failed)
+   - Display article count and date for each brief
+
+4. **Frontend: Generate Button**
+   - Show "Generate Daily Brief" button when no brief available
+   - Button triggers workflow via new endpoint
+   - Disable button while generation is in progress
+
+5. **Frontend: Workflow Progress Indicator**
+   - Poll brief run status while generating
+   - Show text-based loading steps:
+     - "Refreshing feeds..."
+     - "Generating summaries..."
+     - "Creating compliment..."
+     - "Generating audio..."
+     - "Uploading to storage..."
+     - "Complete!"
+   - Update UI as workflow progresses
+
+### Implementation Notes
+
+- Use existing `BriefRun` status tracking
+- Poll `/api/brief/runs/:date` every 2-3 seconds during generation
+- Show inline player only when brief is available
+- Style player to match app's 4 themes using CSS variables
+
 ## Estimated Timeline
 
 - **Milestone 1:** 2-3 days
@@ -379,8 +426,9 @@ Create an agentic workflow using self-hosted n8n to generate a daily audio brief
 - **Milestone 5:** 3-4 days
 - **Milestone 6:** 2-3 days
 - **Milestone 7:** 1-2 days (Error Handling & Cost Tracking)
+- **Milestone 8:** 2-3 days (Brief Navigation & Inline Player)
 
-**Total:** ~13-20 days of focused work
+**Total:** ~15-23 days of focused work
 
 ---
 

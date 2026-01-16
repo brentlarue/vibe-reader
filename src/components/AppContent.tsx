@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
 import NotesPage from './NotesPage';
+import BriefPage from './BriefPage';
 import BackToTop from './BackToTop';
 import { Feed } from '../types';
 
@@ -146,6 +147,7 @@ function AppContent({
           <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
+          <Route path="/brief/:date?" element={<BriefPage />} />
           <Route path="/article/:id" element={<ArticleReader />} />
         </Routes>
       </main>

@@ -252,6 +252,17 @@ If you prefer to generate audio per article (for flexibility):
 - **Free tier supports:** ~3-5 briefs/month
 - **Paid tier:** $5/month for 30k chars = ~10 briefs/month
 
+## Important: Handling Duplicate Files
+
+**Issue:** When testing, if you run the workflow multiple times for the same date, Supabase Storage will try to create duplicate files with the same name (e.g., `2026-01-16.mp3`), which can cause errors.
+
+**Solution:** Add the `x-upsert: true` header to the "Upload to Supabase Storage" node:
+- In "Send Headers" section, add a header:
+  - Name: `x-upsert`
+  - Value: `true`
+
+This allows Supabase to overwrite existing files with the same name, preventing duplicate file errors during testing.
+
 ## Troubleshooting
 
 ### Error: "Character limit exceeded"

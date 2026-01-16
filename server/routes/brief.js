@@ -338,4 +338,116 @@ router.post('/runs', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/brief/storage-url
+ * Get the Supabase Storage URL pattern for audio briefs
+ * Returns: { storageUrl: string } where storageUrl is the base URL for audio-briefs bucket
+ */
+router.get('/storage-url', async (req, res) => {
+  try {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    if (!supabaseUrl) {
+      return res.status(503).json({ error: 'Supabase URL not configured' });
+    }
+
+    // Extract project ref from URL (e.g., https://xxxxx.supabase.co)
+    const match = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/);
+    if (!match) {
+      return res.status(500).json({ error: 'Invalid Supabase URL format' });
+    }
+
+    const projectRef = match[1];
+    const storageUrl = `https://${projectRef}.supabase.co/storage/v1/object/public/audio-briefs`;
+    
+    return res.json({ storageUrl });
+  } catch (error) {
+    console.error('[Brief] Error getting storage URL:', error);
+    return res.status(500).json({
+      error: 'Failed to get storage URL',
+      message: error.message || 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/brief/generate
+ * Trigger n8n workflow to generate a daily brief
+ * Body: { date?: string } (optional, defaults to today)
+ */
+router.post('/generate', async (req, res) => {
+  try {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    const { date } = req.body;
+    const briefDate = date || new Date().toISOString().split('T')[0];
+    
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(briefDate)) {
+      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+    }
+
+    // Check if n8n webhook URL is configured
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+    if (!n8nWebhookUrl) {
+      return res.status(503).json({ error: 'n8n webhook URL not configured' });
+    }
+
+    // Create or update brief run status to "running"
+    await briefRepo.upsertBriefRun(briefDate, {
+      status: 'running',
+      started_at: new Date().toISOString(),
+    });
+
+    // Trigger n8n workflow via webhook
+    try {
+      const webhookResponse = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: briefDate,
+        }),
+      });
+
+      if (!webhookResponse.ok) {
+        throw new Error(`n8n webhook returned ${webhookResponse.status}`);
+      }
+
+      const webhookData = await webhookResponse.json().catch(() => ({}));
+      
+      return res.json({
+        success: true,
+        date: briefDate,
+        message: 'Brief generation started',
+        executionId: webhookData.executionId || null,
+      });
+    } catch (webhookError) {
+      // Update brief run status to failed
+      await briefRepo.upsertBriefRun(briefDate, {
+        status: 'failed',
+        error_message: `Failed to trigger workflow: ${webhookError.message}`,
+        completed_at: new Date().toISOString(),
+      });
+
+      return res.status(500).json({
+        error: 'Failed to trigger workflow',
+        message: webhookError.message,
+      });
+    }
+  } catch (error) {
+    console.error('[Brief] Error triggering generation:', error);
+    return res.status(500).json({
+      error: 'Failed to trigger brief generation',
+      message: error.message || 'Unknown error',
+    });
+  }
+});
+
 export default router;
