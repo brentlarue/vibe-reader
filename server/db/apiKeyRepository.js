@@ -28,6 +28,11 @@ export async function createApiKey(name, expiresAt = null) {
   // Hash it with SHA-256 for storage
   const keyHash = crypto.createHash('sha256').update(plainKey).digest('hex');
 
+  // Debug: Log what we're storing
+  console.log(`[DB] Creating API key "${name}" for env=${env}`);
+  console.log(`[DB] Plain key (first 8 chars): ${plainKey.substring(0, 8)}... (length: ${plainKey.length})`);
+  console.log(`[DB] Hash to store: ${keyHash.substring(0, 16)}...`);
+
   const { data, error } = await supabase
     .from('api_keys')
     .insert({
@@ -44,7 +49,7 @@ export async function createApiKey(name, expiresAt = null) {
     throw error;
   }
 
-  console.log(`[DB] Created API key "${name}" for env=${env}`);
+  console.log(`[DB] Successfully stored API key "${name}" with hash starting: ${keyHash.substring(0, 16)}...`);
   
   // Return the plain key (only shown once) and the ID
   return {
@@ -63,36 +68,76 @@ export async function createApiKey(name, expiresAt = null) {
  */
 export async function verifyApiKey(plainKey) {
   if (!isSupabaseConfigured()) {
+    console.warn('[API Key] Supabase not configured');
     return { valid: false };
   }
 
   const env = getAppEnv();
 
-  // Hash the provided key
-  const keyHash = crypto.createHash('sha256').update(plainKey).digest('hex');
+  // Trim any whitespace from the key
+  const cleanKey = plainKey.trim();
+  
+  // Debug: Log key info (first/last chars only for security)
+  console.log(`[API Key] Verifying key: ${cleanKey.substring(0, 8)}...${cleanKey.substring(cleanKey.length - 8)} (length: ${cleanKey.length})`);
 
-  // Look up the hash
+  // Hash the provided key
+  const keyHash = crypto.createHash('sha256').update(cleanKey).digest('hex');
+  
+  // Debug: Log the computed hash
+  console.log(`[API Key] Computed hash: ${keyHash.substring(0, 16)}...`);
+
+  // Look up the hash - fetch ALL keys first to debug
+  const { data: allKeys, error: listError } = await supabase
+    .from('api_keys')
+    .select('id, name, key_hash, env');
+  
+  if (listError) {
+    console.warn(`[API Key] Error listing keys: ${listError.message}`);
+  } else {
+    console.log(`[API Key] Total keys in database: ${allKeys?.length || 0}`);
+    allKeys?.forEach(k => {
+      console.log(`[API Key]   - ${k.name} (env=${k.env}), hash starts with: ${k.key_hash?.substring(0, 16)}...`);
+    });
+  }
+
+  // Now do the actual lookup
   const { data, error } = await supabase
     .from('api_keys')
     .select('id, name, expires_at, env')
-    .eq('key_hash', keyHash)
-    .single();
+    .eq('key_hash', keyHash);
 
-  if (error || !data) {
+  if (error) {
+    console.warn(`[API Key] Database error: ${error.message}`);
+    console.warn(`[API Key] Current env: ${env}`);
     return { valid: false };
   }
 
+  if (!data || data.length === 0) {
+    console.warn(`[API Key] Key not found! Hash ${keyHash.substring(0, 16)}... does not match any stored hash.`);
+    console.warn(`[API Key] Current env: ${env}`);
+    return { valid: false };
+  }
+
+  if (data.length > 1) {
+    console.warn(`[API Key] Multiple keys found with same hash (unexpected!). Using first one.`);
+  }
+
+  const keyData = data[0];
+  
+  console.log(`[API Key] Key found: ${keyData.name}, env=${keyData.env}, current env=${env}`);
+
   // Check environment matches
-  if (data.env !== env) {
-    console.warn(`[API Key] Key found but env mismatch: key env=${data.env}, current env=${env}`);
+  if (keyData.env !== env) {
+    console.warn(`[API Key] Key found but env mismatch: key env=${keyData.env}, current env=${env}`);
+    console.warn(`[API Key] Make sure APP_ENV in .env matches the environment where the key was created`);
     return { valid: false };
   }
 
   // Check expiration
-  if (data.expires_at) {
-    const expiresAt = new Date(data.expires_at);
+  if (keyData.expires_at) {
+    const expiresAt = new Date(keyData.expires_at);
     if (expiresAt < new Date()) {
-      console.warn(`[API Key] Key expired: ${data.id}`);
+      console.warn(`[API Key] Key expired: ${keyData.id}`);
       return { valid: false };
     }
   }
@@ -101,12 +146,12 @@ export async function verifyApiKey(plainKey) {
   await supabase
     .from('api_keys')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id);
+    .eq('id', keyData.id);
 
   return {
     valid: true,
-    keyId: data.id,
-    name: data.name,
+    keyId: keyData.id,
+    name: keyData.name,
   };
 }
 

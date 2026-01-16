@@ -158,7 +158,15 @@ async function requireAuth(req, res, next) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const apiKey = authHeader.substring(7); // Remove "Bearer " prefix
     
+    // Debug: Log the received key info
+    console.log(`[AUTH] Authorization header received, key length: ${apiKey.length}`);
+    console.log(`[AUTH] Key preview: ${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 8)}`);
+    
     try {
+      const { getAppEnv } = await import('./db/env.js');
+      const currentEnv = getAppEnv();
+      console.log(`[AUTH] Current backend environment: ${currentEnv}`);
+      
       const apiKeyRepoModule = await import('./db/apiKeyRepository.js');
       const verification = await apiKeyRepoModule.verifyApiKey(apiKey);
       
@@ -168,6 +176,8 @@ async function requireAuth(req, res, next) {
         return next();
       } else {
         console.log('[AUTH] Invalid or expired API key');
+        console.log(`[AUTH] Backend is running in: ${currentEnv} environment`);
+        console.log('[AUTH] Make sure your API key was created for the same environment');
         return res.status(401).json({ error: 'Unauthorized' });
       }
     } catch (error) {
