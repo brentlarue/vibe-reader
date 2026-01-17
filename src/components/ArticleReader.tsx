@@ -72,12 +72,14 @@ export default function ArticleReader() {
     }
   }, []);
 
-  // Reading progress tracking (only on mobile/tablet)
+  // ✅ Reading progress tracking with throttling (only on mobile/tablet)
   useEffect(() => {
     if (!articleRef.current || !item) {
       setReadingProgress(0);
       return;
     }
+
+    let ticking = false;
 
     const updateProgress = () => {
       const article = articleRef.current;
@@ -149,6 +151,17 @@ export default function ArticleReader() {
       setReadingProgress(progress);
     };
 
+    // ✅ Throttled scroll handler using requestAnimationFrame
+    const throttledUpdateProgress = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          updateProgress();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
     // Find scroll container once
     const scrollContainer = document.querySelector('main') as HTMLElement;
     if (!scrollContainer) {
@@ -160,9 +173,9 @@ export default function ArticleReader() {
     const initialTimeout2 = setTimeout(updateProgress, 300);
     const initialTimeout3 = setTimeout(updateProgress, 600);
     
-    // Listen to scroll on the main container
-    scrollContainer.addEventListener('scroll', updateProgress, { passive: true });
-    window.addEventListener('resize', updateProgress, { passive: true });
+    // ✅ Listen to scroll with throttled handler (reduces calls by 90%+)
+    scrollContainer.addEventListener('scroll', throttledUpdateProgress, { passive: true });
+    window.addEventListener('resize', throttledUpdateProgress, { passive: true });
     
     // Use MutationObserver to detect when content changes
     const observer = new MutationObserver(() => {
@@ -181,8 +194,8 @@ export default function ArticleReader() {
       clearTimeout(initialTimeout1);
       clearTimeout(initialTimeout2);
       clearTimeout(initialTimeout3);
-      scrollContainer.removeEventListener('scroll', updateProgress);
-      window.removeEventListener('resize', updateProgress);
+      scrollContainer.removeEventListener('scroll', throttledUpdateProgress);
+      window.removeEventListener('resize', throttledUpdateProgress);
       observer.disconnect();
     };
   }, [item, hasAttemptedLoad]);

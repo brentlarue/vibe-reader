@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { FeedItem } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -27,9 +27,12 @@ const isIOS = () => {
          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 };
 
-export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, feeds = [] }: FeedItemCardProps) {
-  // Get the current feed display name (syncs with feed renames)
-  const feedDisplayName = getFeedDisplayName(item, feeds);
+function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, feeds = [] }: FeedItemCardProps) {
+  // ✅ Memoize feed display name (only recalc when feeds or item.feedId changes)
+  const feedDisplayName = useMemo(
+    () => getFeedDisplayName(item, feeds),
+    [item.feedId, item.source, feeds]
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const [showToast, setShowToast] = useState(false);
@@ -452,3 +455,19 @@ export default function FeedItemCard({ item, onStatusChange, scrollKey, allItemI
     </article>
   );
 }
+
+// ✅ Memoize component to prevent unnecessary re-renders
+// Only re-render if these props change: item.id, item.status, item.readingOrder, feeds
+export default memo(FeedItemCard, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.status === nextProps.item.status &&
+    prevProps.item.readingOrder === nextProps.item.readingOrder &&
+    prevProps.item.title === nextProps.item.title &&
+    prevProps.item.url === nextProps.item.url &&
+    prevProps.scrollKey === nextProps.scrollKey &&
+    prevProps.onStatusChange === nextProps.onStatusChange &&
+    // Feeds array reference comparison (should be stable if feeds don't change)
+    prevProps.feeds === nextProps.feeds
+  );
+});

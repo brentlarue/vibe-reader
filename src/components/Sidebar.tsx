@@ -190,12 +190,12 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   // State to store inbox items for counting
   const [inboxItems, setInboxItems] = useState<FeedItem[]>([]);
 
-  // Load inbox items for feed counts
+  // ✅ Load inbox items for feed counts - use server-side filtering
   useEffect(() => {
     const loadInboxItems = async () => {
       try {
-        const allItems = await storage.getFeedItems();
-        const inbox = allItems.filter(item => item.status === 'inbox');
+        // Only fetch inbox items (server-side filter)
+        const inbox = await storage.getFeedItems({ status: 'inbox' });
         setInboxItems(inbox);
       } catch (error) {
         console.error('Error loading inbox items for counts:', error);
@@ -208,8 +208,8 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   useEffect(() => {
     const handleItemsUpdate = async () => {
       try {
-        const allItems = await storage.getFeedItems();
-        const inbox = allItems.filter(item => item.status === 'inbox');
+        // ✅ Only fetch inbox items (server-side filter)
+        const inbox = await storage.getFeedItems({ status: 'inbox' });
         setInboxItems(inbox);
       } catch (error) {
         console.error('Error refreshing inbox items:', error);
@@ -219,24 +219,35 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     return () => window.removeEventListener('feedItemsUpdated', handleItemsUpdate);
   }, []);
 
-  // Calculate inbox counts for each feed (always shown, regardless of current view)
+  // ✅ Optimized inbox counts - use feedId matching when available (O(n) instead of O(n×m))
   const feedInboxCounts = useMemo(() => {
     const counts: Record<string, number> = {};
 
-    feeds.forEach((feed) => {
-      let count = 0;
+    // Initialize counts to 0 for all feeds
+    feeds.forEach(feed => {
+      counts[feed.id] = 0;
+    });
 
-      inboxItems.forEach((item: FeedItem) => {
-        if (itemBelongsToFeed(item, feed)) {
-          count++;
-        }
-      });
+    // Count items by feedId first (fast path - O(n))
+    inboxItems.forEach((item: FeedItem) => {
+      if (item.feedId && counts.hasOwnProperty(item.feedId)) {
+        counts[item.feedId]++;
+      }
+    });
 
-      counts[feed.id] = count;
+    // For items without feedId (legacy), use itemBelongsToFeed (slow path - O(n×m) but only for legacy items)
+    inboxItems.forEach((item: FeedItem) => {
+      if (!item.feedId) {
+        feeds.forEach((feed) => {
+          if (itemBelongsToFeed(item, feed)) {
+            counts[feed.id]++;
+          }
+        });
+      }
     });
 
     return counts;
-  }, [feeds, inboxItems, itemBelongsToFeed]);
+  }, [feeds, inboxItems]);
 
   // Filter out link-type pseudo-feed and sort alphabetically by name (A-Z)
   const sortedFeeds = useMemo(() => {

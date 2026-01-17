@@ -1,7 +1,7 @@
 import { FeedItem, Feed } from '../types';
 import FeedItemCard from './FeedItemCard';
 import PullToRefresh from './PullToRefresh';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { storage } from '../utils/storage';
 import { useLocation } from 'react-router-dom';
 import { itemBelongsToFeed } from '../utils/feedMatching';
@@ -37,34 +37,53 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   const hasRestoredScroll = useRef(false);
 
   const loadItems = useCallback(async () => {
-    const allItems = await storage.getFeedItems();
-    let filtered = allItems.filter((item) => item.status === status);
+    // ✅ Use server-side filtering - only fetch items with matching status
+    const filtered = await storage.getFeedItems({
+      status,
+      feedId: selectedFeedId || undefined,
+    });
     
-    // Filter by selected feed if one is selected
-    if (selectedFeedId) {
+    // If server-side feedId filtering isn't available, filter client-side for selected feed
+    let finalItems = filtered;
+    if (selectedFeedId && filtered.length > 0) {
       const selectedFeed = feeds.find(f => f.id === selectedFeedId);
       if (selectedFeed) {
-        // Use the shared matching function for consistent behavior
-        filtered = filtered.filter((item) => itemBelongsToFeed(item, selectedFeed));
+        // Double-check with itemBelongsToFeed in case feedId matching isn't perfect
+        finalItems = filtered.filter((item) => {
+          // If item has feedId, use that for fast matching
+          if (item.feedId && item.feedId === selectedFeed.id) return true;
+          // Otherwise use itemBelongsToFeed for legacy items
+          return itemBelongsToFeed(item, selectedFeed);
+        });
       }
     }
     
     // Sort items based on sort order
-    filtered.sort((a, b) => {
+    // ✅ Pre-compute word counts once for all items before sorting (performance optimization)
+    const wordCountMap = new Map<string, number>();
+    if (sortOrder === 'longest' || sortOrder === 'shortest') {
+      finalItems.forEach(item => {
+        const content = item.fullContent || item.contentSnippet || '';
+        const text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        wordCountMap.set(item.id, text.split(/\s+/).filter(word => word.length > 0).length);
+      });
+    }
+
+    const sorted = [...finalItems].sort((a, b) => {
       if (sortOrder === 'newest' || sortOrder === 'oldest') {
         // Sort by published date
         const dateA = new Date(a.publishedAt).getTime();
         const dateB = new Date(b.publishedAt).getTime();
         return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
       } else {
-        // Sort by word count
-        const wordCountA = getWordCount(a);
-        const wordCountB = getWordCount(b);
+        // ✅ Use pre-computed word counts from map (much faster than recalculating)
+        const wordCountA = wordCountMap.get(a.id) || 0;
+        const wordCountB = wordCountMap.get(b.id) || 0;
         return sortOrder === 'longest' ? wordCountB - wordCountA : wordCountA - wordCountB;
       }
     });
     
-    setItems(filtered);
+    setItems(sorted);
     setHasAttemptedLoad(true);
   }, [status, sortOrder, selectedFeedId, feeds]);
 

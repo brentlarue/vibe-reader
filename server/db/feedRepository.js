@@ -410,6 +410,7 @@ export async function getFeedItem(itemId) {
 
 /**
  * Upsert feed items (insert or update on conflict)
+ * Preserves existing status when item already exists to prevent re-importing deleted/archived items
  * @param {string} feedId - Feed UUID
  * @param {Array} items - Array of feed items
  * @returns {Promise<Array>} Upserted items
@@ -425,24 +426,6 @@ export async function upsertFeedItems(feedId, items) {
 
   const env = getAppEnv();
 
-  // Transform items for database
-  const dbItems = items.map(item => ({
-    feed_id: feedId,
-    external_id: item.id || item.externalId || null,
-    title: item.title,
-    url: item.url,
-    published_at: item.publishedAt || null,
-    content_snippet: item.contentSnippet || null,
-    full_content: item.fullContent || null,
-    ai_summary: item.aiSummary || null,
-    status: item.status || 'inbox',
-    paywall_status: item.paywallStatus || 'unknown',
-    reading_order: item.readingOrder || null,
-    source: item.source || null,
-    source_type: item.sourceType || 'rss',
-    env,
-  }));
-
   // Verify the feed exists in the current environment before upserting items
   // This prevents foreign key constraint violations
   const { data: feedCheck, error: feedCheckError } = await supabase
@@ -457,6 +440,50 @@ export async function upsertFeedItems(feedId, items) {
     console.error(`[DB] ${errorMsg}`, feedCheckError);
     throw new Error(errorMsg);
   }
+
+  // ✅ Check which items already exist to preserve their status
+  const urls = items.map(item => item.url).filter(Boolean);
+  const { data: existingItems, error: existingError } = await supabase
+    .from('feed_items')
+    .select('url, status')
+    .eq('feed_id', feedId)
+    .eq('env', env)
+    .in('url', urls);
+
+  if (existingError) {
+    console.error('[DB] Error checking existing items:', existingError);
+    // Continue anyway - worst case we'll reset status for some items
+  }
+
+  // Create a map of existing statuses by URL
+  const existingStatusMap = new Map();
+  (existingItems || []).forEach(item => {
+    existingStatusMap.set(item.url, item.status);
+  });
+
+  // Transform items for database - preserve existing status if item already exists
+  const dbItems = items.map(item => {
+    const existingStatus = existingStatusMap.get(item.url);
+    // ✅ Only set status to 'inbox' if item doesn't exist; preserve status for existing items
+    const status = existingStatus || item.status || 'inbox';
+
+    return {
+      feed_id: feedId,
+      external_id: item.id || item.externalId || null,
+      title: item.title,
+      url: item.url,
+      published_at: item.publishedAt || null,
+      content_snippet: item.contentSnippet || null,
+      full_content: item.fullContent || null,
+      ai_summary: item.aiSummary || null,
+      status, // Use preserved status or default to 'inbox' for new items
+      paywall_status: item.paywallStatus || 'unknown',
+      reading_order: item.readingOrder || null,
+      source: item.source || null,
+      source_type: item.sourceType || 'rss',
+      env,
+    };
+  });
 
   // Use upsert with ON CONFLICT on (feed_id, url, env)
   // Supabase PostgREST requires column names with spaces: 'col1, col2, col3'
@@ -476,6 +503,7 @@ export async function upsertFeedItems(feedId, items) {
       feed_id: dbItems[0].feed_id,
       url: dbItems[0].url,
       env: dbItems[0].env,
+      status: dbItems[0].status,
     } : 'no items');
     console.error('[DB] Full error details:', JSON.stringify(error, null, 2));
     throw error;
