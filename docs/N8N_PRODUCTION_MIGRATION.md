@@ -8,14 +8,10 @@
 
 Before starting, ensure you have:
 - ✅ Production backend URL: `https://thesignal.brentlarue.me`
-- ✅ Production Supabase project (same as dev or separate?)
 - ✅ Production n8n instance running (publicly accessible)
-- ✅ Production API keys:
-  - OpenAI API Key (production)
-  - ElevenLabs API Key (production)
-  - Supabase Service Role Key (production)
-  - Supabase Anon Key (production)
-  - Supabase Project ID (for storage URLs)
+- ✅ Production API key (for backend API access) - **Generate in Step 1**
+
+**Note:** If you're using the **same Supabase, OpenAI, and ElevenLabs keys** for dev and prod, you don't need to update those - they can stay the same.
 
 ---
 
@@ -82,11 +78,13 @@ fetch('/api/keys', {
 
 This is the **most critical node**. It contains all environment-specific values.
 
+### Update "Set Config" Node (Only Backend API Values)
+
+Since your keys are set directly on HTTP Request nodes (not in Set Config), you **only need to update Set Config with backend API values**.
+
 ### Open the "Set Config (manual)" node:
 
-Update **ALL** of these fields (Expression Mode: **OFF** for values, unless noted):
-
-#### Required Fields:
+**Required Fields** (these are the only ones that need to be in Set Config):
 
 1. **`apiUrl`**
    - **Dev**: `http://localhost:3001`
@@ -98,99 +96,40 @@ Update **ALL** of these fields (Expression Mode: **OFF** for values, unless note
    - **Production**: (the API key you generated in Step 1)
    - **Value**: `YOUR_PRODUCTION_API_KEY_HERE` (the Bearer token, without "Bearer " prefix)
 
-3. **`supabaseUrl`**
-   - **Dev**: (your dev Supabase URL, e.g., `https://xxxxx.supabase.co`)
-   - **Production**: (your production Supabase URL)
-   - **Value**: `https://YOUR_PROJECT_REF.supabase.co`
-
-4. **`supabaseServiceRoleKey`**
-   - **Dev**: (your dev service role key)
-   - **Production**: (your production service role key)
-   - **Value**: `YOUR_PRODUCTION_SERVICE_ROLE_KEY`
-
-5. **`supabaseAnonKey`**
-   - **Dev**: (your dev anon key)
-   - **Production**: (your production anon key)
-   - **Value**: `YOUR_PRODUCTION_ANON_KEY`
-
-6. **`supabaseProjectId`**
-   - **Dev**: (your dev project ref)
-   - **Production**: (your production project ref)
-   - **Value**: `YOUR_PRODUCTION_PROJECT_REF` (the part before `.supabase.co`)
-
-7. **`openaiApiKey`**
-   - **Dev**: (your dev OpenAI key)
-   - **Production**: (your production OpenAI key)
-   - **Value**: `YOUR_PRODUCTION_OPENAI_KEY`
-
-8. **`elevenlabsApiKey`**
-   - **Dev**: (your dev ElevenLabs key)
-   - **Production**: (your production ElevenLabs key)
-   - **Value**: `YOUR_PRODUCTION_ELEVENLABS_KEY`
-
-9. **`voiceId`**
-   - **Keep the same** as dev (unless you want a different voice)
-   - **Value**: (your ElevenLabs voice ID, e.g., `pNInz6obpgDQGcFmaJgB`)
+**That's it!** The other keys (OpenAI, ElevenLabs, Supabase) are updated directly on their HTTP Request nodes in **Step 4**.
 
 ---
 
-## Step 4: Update All HTTP Request Nodes
+## Step 4: Verify HTTP Request Nodes (Likely No Changes Needed!)
 
-### A. "Refresh Feeds" Node
+If your HTTP Request nodes already use expressions like `{{ $('Set Config').item.json.apiKey }}` or `{{ $json.apiKey }}`, then **no changes are needed** - they'll automatically use the values you updated in Set Config!
 
-- **Method**: `POST`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  {{ $json.apiUrl }}/api/brief/refresh
-  ```
-- **Authentication**: `Generic Credential Type`
-  - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $json.apiKey }}
-    ```
+### Quick Check:
 
-### B. "Get Daily Items" Node
+Look at a few HTTP Request nodes (like "Refresh Feeds", "Get Daily Items") and check their **Authorization headers**:
 
-- **Method**: `GET`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  {{ $json.apiUrl }}/api/brief/items?date={{ $json.date }}
-  ```
-- **Authentication**: `Generic Credential Type`
-  - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $json.apiKey }}
-    ```
+- ✅ **If header uses**: `{{ $json.apiKey }}` or `{{ $('Set Config').item.json.apiKey }}` → **No change needed!** (Already pulling from Set Config)
+- ❌ **If header is hardcoded**: `Bearer sk-...` → Update to use Set Config expression
 
-### C. "Save Summary" Node (inside loop)
+### Nodes That Should Use Set Config Values:
 
-- **Method**: `POST`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  {{ $('Set Config').first().json.apiUrl }}/api/items/{{ $json.itemId }}/summary
-  ```
-- **Authentication**: `Generic Credential Type`
-  - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $('Set Config').first().json.apiKey }}
-    ```
+1. **"Refresh Feeds" Node**
+   - URL: `{{ $json.apiUrl }}/api/brief/refresh`
+   - Authorization: `Bearer {{ $json.apiKey }}` (from Set Config)
+
+2. **"Get Daily Items" Node**
+   - URL: `{{ $json.apiUrl }}/api/brief/items?date={{ $json.date }}`
+   - Authorization: `Bearer {{ $json.apiKey }}` (from Set Config)
+
+3. **"Save Summary" Node** (inside loop)
+   - URL: `{{ $('Set Config').first().json.apiUrl }}/api/items/{{ $json.itemId }}/summary`
+   - Authorization: `Bearer {{ $('Set Config').first().json.apiKey }}` (from Set Config)
 
 ### D. "Get Brief Metadata" Node
 
-- **Method**: `GET`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  {{ $json.apiUrl }}/api/brief/metadata?date={{ $json.date }}
-  ```
-- **Authentication**: `Generic Credential Type`
-  - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $json.apiKey }}
-    ```
+- **URL**: Uses `{{ $json.apiUrl }}` (from Set Config)
+- **Authorization**: Uses `{{ $json.apiKey }}` (from Set Config)
+- **No change needed** if already using these expressions!
 
 ### E. "Generate Summary" Node (OpenAI)
 
@@ -198,10 +137,9 @@ Update **ALL** of these fields (Expression Mode: **OFF** for values, unless note
 - **URL**: `https://api.openai.com/v1/chat/completions`
 - **Authentication**: `Generic Credential Type`
   - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $('Set Config').first().json.openaiApiKey }}
-    ```
+  - **Header Value**: 
+    - **No change needed** if using same OpenAI key for dev/prod
+    - Verify the key is correct (same as dev)
 
 ### F. "Call OpenAI for Compliment" Node
 
@@ -209,26 +147,23 @@ Update **ALL** of these fields (Expression Mode: **OFF** for values, unless note
 - **URL**: `https://api.openai.com/v1/chat/completions`
 - **Authentication**: `Generic Credential Type`
   - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $('Set Config').first().json.openaiApiKey }}
-    ```
+  - **Header Value**: 
+    - **No change needed** if using same OpenAI key for dev/prod
+    - Verify the key is correct (same as dev)
 
 ### G. "Generate Audio" Node (ElevenLabs) ⚠️ CRITICAL
 
 This node previously failed in dev. Double-check all settings:
 
 - **Method**: `POST`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  https://api.elevenlabs.io/v1/text-to-speech/{{ $('Set Config').first().json.voiceId }}
-  ```
+- **URL**: 
+  - Keep same as dev (voice ID doesn't change)
+  - **Example**: `https://api.elevenlabs.io/v1/text-to-speech/YOUR_VOICE_ID`
 - **Authentication**: `Generic Credential Type`
-  - **Header Name**: `xi-api-key`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    {{ $('Set Config').first().json.elevenlabsApiKey }}
-    ```
+  - **Header Name**: `xi-api-key` ⚠️ **Note: `xi-api-key`, not `Authorization`!**
+  - **Header Value**: 
+    - **No change needed** if using same ElevenLabs key for dev/prod
+    - Verify the key is correct (same as dev)
 - **Body**: (JSON mode, Expression Mode: **ON**)
   ```javascript
   {
@@ -245,39 +180,34 @@ This node previously failed in dev. Double-check all settings:
 ### H. "Upload to Supabase Storage" Node
 
 - **Method**: `POST`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  https://{{ $('Set Config').first().json.supabaseProjectId }}.supabase.co/storage/v1/object/audio-briefs/{{ $json.date }}.mp3
-  ```
-- **Authentication**: `Generic Credential Type` (set **TWO headers**):
-  1. **Header Name**: `Authorization`
-     - **Header Value**: (Expression Mode: **ON**)
-       ```javascript
-       Bearer {{ $('Set Config').first().json.supabaseServiceRoleKey }}
-       ```
-  2. **Header Name**: `apikey`
-     - **Header Value**: (Expression Mode: **ON**)
-       ```javascript
-       {{ $('Set Config').first().json.supabaseServiceRoleKey }}
-       ```
-  3. **Header Name**: `x-upsert`
-     - **Header Value**: `true`
-     - **Note**: This handles duplicate file names (same date/title)
+- **URL**: 
+  - **No change needed** if using same Supabase project for dev/prod
+  - If using different projects: Replace dev project ID with production project ID
+  - Keep `{{ $json.date }}` or `{{ $('Prepare Audio Script').item.json.date }}` part as expression
+- **Authentication**: 
+  - Uses n8n's "Header Auth" credential for Supabase API Key (handles `apikey` header automatically)
+  - **No change needed** if using same Supabase keys for dev/prod
+- **Header Parameters** (if not using Header Auth, add these manually):
+  - **If you see only `Content-Type` in Header Parameters**: Your setup uses n8n's Header Auth credential (recommended)
+  - **Optional: Add `x-upsert` header** (recommended to handle duplicate files):
+    - **Header Name**: `x-upsert`
+    - **Header Value**: `true`
+    - **Why**: Prevents errors when uploading a file with the same date/title (same filename)
+  - **Optional: Add `Authorization` header** (if Header Auth doesn't set it):
+    - **Header Name**: `Authorization`
+    - **Header Value**: `Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY`
 - **Body**: (Binary data from "Generate Audio" response)
+
+**Note**: If your dev workflow works without `x-upsert` and `Authorization` headers, you don't need to add them. However, `x-upsert: true` is recommended to handle duplicate uploads gracefully.
 
 ### I. "Set Run Status: Complete" Node
 
 - **Method**: `POST`
-- **URL**: (Expression Mode: **ON**)
-  ```javascript
-  {{ $('Set Config').first().json.apiUrl }}/api/brief/runs
-  ```
+- **URL**: Uses `{{ $('Set Config').first().json.apiUrl }}` (from Set Config)
 - **Authentication**: `Generic Credential Type`
   - **Header Name**: `Authorization`
-  - **Header Value**: (Expression Mode: **ON**)
-    ```javascript
-    Bearer {{ $('Set Config').first().json.apiKey }}
-    ```
+  - **Header Value**: Uses `{{ $('Set Config').first().json.apiKey }}` (from Set Config)
+  - **No change needed** if already using this expression!
 - **Body**: (JSON mode, Expression Mode: **ON**)
   ```javascript
   {
