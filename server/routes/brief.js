@@ -14,6 +14,8 @@ import * as feedRepo from '../db/feedRepository.js';
 import * as briefRepo from '../db/briefRepository.js';
 import { isSupabaseConfigured } from '../db/supabaseClient.js';
 import { getAppEnv } from '../db/env.js';
+import { retryWithBackoff, isRetriableError } from '../utils/retry.js';
+import { aggregateCosts } from '../utils/costTracking.js';
 
 const router = express.Router();
 
@@ -45,23 +47,31 @@ router.post('/refresh', async (req, res) => {
     // Refresh each feed
     for (const feed of rssFeeds) {
       try {
-        // Use the existing RSS proxy logic
-        const Parser = (await import('rss-parser')).default;
-        const parser = new Parser({
-          timeout: 10000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; TheSignalReader/1.0)',
-            'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, */*',
+        // Use retry logic for feed parsing
+        const parsedFeed = await retryWithBackoff(
+          async () => {
+            const Parser = (await import('rss-parser')).default;
+            const parser = new Parser({
+              timeout: 10000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; TheSignalReader/1.0)',
+                'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, */*',
+              },
+              customFields: {
+                item: [
+                  ['content:encoded', 'contentEncoded'],
+                  ['content', 'content'],
+                ],
+              },
+            });
+            return await parser.parseURL(feed.url);
           },
-          customFields: {
-            item: [
-              ['content:encoded', 'contentEncoded'],
-              ['content', 'content'],
-            ],
-          },
-        });
-
-        const parsedFeed = await parser.parseURL(feed.url);
+          {
+            maxRetries: 2,
+            initialDelay: 1000,
+            shouldRetry: isRetriableError,
+          }
+        );
         
         // Parse dates
         const parseDate = (item) => {
@@ -188,6 +198,12 @@ router.get('/metadata', async (req, res) => {
     }
 
     const metadata = await briefRepo.getBriefMetadata(date);
+    
+    // Include cost summary if available
+    if (metadata.runMetadata) {
+      const costSummary = aggregateCosts(metadata.runMetadata);
+      metadata.costSummary = costSummary;
+    }
     
     return res.json(metadata);
   } catch (error) {
@@ -321,10 +337,25 @@ router.post('/runs', async (req, res) => {
 
     if (errorMessage) {
       updates.error_message = errorMessage;
+      // Ensure error is tracked in metadata
+      if (!updates.metadata.errors) {
+        updates.metadata.errors = [];
+      }
+      updates.metadata.errors.push({
+        message: errorMessage,
+        details: errorDetails || {},
+        timestamp: new Date().toISOString(),
+      });
     }
 
     if (errorDetails) {
       updates.error_details = errorDetails;
+    }
+
+    // Aggregate cost data if metadata contains cost information
+    if (metadata && (metadata.openAICosts || metadata.elevenLabsCosts || metadata.costs)) {
+      const costSummary = aggregateCosts(metadata);
+      updates.metadata.costSummary = costSummary;
     }
 
     const run = await briefRepo.upsertBriefRun(date, updates);
@@ -375,6 +406,87 @@ router.get('/storage-url', async (req, res) => {
 });
 
 /**
+ * DELETE /api/brief/:date
+ * Delete a daily brief (run record and audio file)
+ */
+router.delete('/:date', async (req, res) => {
+  try {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    const { date } = req.params;
+    
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+    }
+
+    const env = getAppEnv();
+
+    // Get the brief run to check if audio file exists
+    const run = await briefRepo.getBriefRun(date);
+    
+    if (!run) {
+      return res.status(404).json({ error: 'Brief not found' });
+    }
+
+    // Delete audio file from Supabase Storage if it exists
+    const audioFilePath = `${date}.mp3`;
+    try {
+      const supabaseModule = await import('../db/supabaseClient.js');
+      const supabase = supabaseModule.supabase;
+      
+      if (supabase) {
+        const { error: storageError } = await supabase
+          .storage
+          .from('audio-briefs')
+          .remove([audioFilePath]);
+
+        if (storageError && storageError.message !== 'Object not found') {
+          console.warn(`[Brief] Error deleting audio file ${audioFilePath}:`, storageError);
+          // Continue with database deletion even if storage deletion fails
+        } else {
+          console.log(`[Brief] Deleted audio file: ${audioFilePath}`);
+        }
+      }
+    } catch (storageErr) {
+      console.warn(`[Brief] Error accessing storage to delete file:`, storageErr);
+      // Continue with database deletion
+    }
+
+    // Delete the brief run from database
+    const supabaseModule = await import('../db/supabaseClient.js');
+    const supabase = supabaseModule.supabase;
+    
+    if (!supabase) {
+      throw new Error('Supabase client not available');
+    }
+
+    const { error: deleteError } = await supabase
+      .from('daily_brief_runs')
+      .delete()
+      .eq('date', date)
+      .eq('env', env);
+
+    if (deleteError) {
+      console.error('[Brief] Error deleting brief run:', deleteError);
+      throw deleteError;
+    }
+
+    console.log(`[Brief] Deleted brief for ${date}`);
+    
+    return res.json({ success: true, message: 'Brief deleted successfully' });
+  } catch (error) {
+    console.error('[Brief] Error deleting brief:', error);
+    return res.status(500).json({
+      error: 'Failed to delete brief',
+      message: error.message || 'Unknown error',
+    });
+  }
+});
+
+/**
  * POST /api/brief/generate
  * Trigger n8n workflow to generate a daily brief
  * Body: { date?: string } (optional, defaults to today)
@@ -397,6 +509,31 @@ router.post('/generate', async (req, res) => {
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
     if (!n8nWebhookUrl) {
       return res.status(503).json({ error: 'n8n webhook URL not configured' });
+    }
+
+    // Check if brief already exists for this date
+    const existingRun = await briefRepo.getBriefRun(briefDate);
+    
+    if (existingRun && existingRun.status === 'completed') {
+      // Get current article count for this date
+      const currentItems = await briefRepo.getBriefItems(briefDate);
+      const currentArticleCount = currentItems.length;
+      
+      // Get article count from existing brief metadata
+      const existingArticleCount = existingRun.metadata?.articleCount || 0;
+      
+      // If article counts match, prevent regeneration
+      if (currentArticleCount === existingArticleCount && existingArticleCount > 0) {
+        return res.status(409).json({
+          error: 'Brief already exists',
+          message: `A brief for ${briefDate} already exists with ${existingArticleCount} articles. No need to regenerate.`,
+          date: briefDate,
+          articleCount: existingArticleCount,
+        });
+      }
+      
+      // If article counts differ or no audio exists, allow regeneration (will replace existing)
+      console.log(`[Brief] Regenerating brief for ${briefDate}: existing count=${existingArticleCount}, new count=${currentArticleCount}`);
     }
 
     // Create or update brief run status to "running"

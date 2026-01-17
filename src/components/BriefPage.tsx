@@ -18,6 +18,7 @@ interface BriefCard {
   articleCount: number;
   thumbnail: string | null;
   items: FeedItem[];
+  duration?: number | null; // Duration in seconds, loaded from audio file
 }
 
 // Extract first image from HTML content
@@ -39,6 +40,48 @@ const extractFirstImage = (html: string): string | null => {
   return null;
 };
 
+// Get audio duration from URL by loading metadata
+const getAudioDuration = (audioUrl: string): Promise<number | null> => {
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    
+    const handleLoadedMetadata = () => {
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        resolve(audio.duration);
+      } else {
+        resolve(null);
+      }
+      cleanup();
+    };
+    
+    const handleError = () => {
+      resolve(null);
+      cleanup();
+    };
+    
+    const cleanup = () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('error', handleError);
+      audio.src = '';
+    };
+    
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('error', handleError);
+    
+    // Set timeout to avoid hanging
+    setTimeout(() => {
+      if (audio.readyState === 0) {
+        resolve(null);
+        cleanup();
+      }
+    }, 5000); // 5 second timeout
+    
+    audio.preload = 'metadata';
+    audio.crossOrigin = 'anonymous';
+    audio.src = audioUrl;
+  });
+};
+
 export default function BriefPage() {
   const [briefs, setBriefs] = useState<BriefCard[]>([]);
   const [selectedBrief, setSelectedBrief] = useState<BriefCard | null>(null);
@@ -47,6 +90,7 @@ export default function BriefPage() {
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState<string>('');
+  const [generatingDate, setGeneratingDate] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const loadingRef = useRef<HTMLDivElement>(null);
@@ -161,6 +205,17 @@ export default function BriefPage() {
             audioUrl = `${storageUrl}/${run.date}.mp3`;
           }
 
+          // Get audio duration from the file itself (if audioUrl exists)
+          let duration: number | null = null;
+          if (audioUrl) {
+            try {
+              duration = await getAudioDuration(audioUrl);
+            } catch (err) {
+              console.error(`[BriefPage] Error getting duration for ${run.date}:`, err);
+              duration = null;
+            }
+          }
+
           return {
             date: run.date,
             run,
@@ -168,6 +223,7 @@ export default function BriefPage() {
             articleCount: run.metadata?.articleCount || articleCount,
             thumbnail,
             items,
+            duration,
           };
         })
       );
@@ -227,12 +283,11 @@ export default function BriefPage() {
 
   // Poll for brief run status when generating
   useEffect(() => {
-    if (!isGenerating) return;
+    if (!isGenerating || !generatingDate) return;
 
     const pollInterval = setInterval(async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const response = await fetch(`/api/brief/runs/${today}`, {
+        const response = await fetch(`/api/brief/runs/${generatingDate}`, {
           credentials: 'include',
         });
 
@@ -249,11 +304,13 @@ export default function BriefPage() {
           } else if (run.status === 'completed') {
             setGenerationStep('Complete!');
             setIsGenerating(false);
+            setGeneratingDate(null);
             // Reload briefs
             await loadBriefs(0, false);
           } else if (run.status === 'failed') {
             setGenerationStep('Failed');
             setIsGenerating(false);
+            setGeneratingDate(null);
             setError(run.errorMessage || 'Generation failed');
           }
         }
@@ -263,7 +320,7 @@ export default function BriefPage() {
     }, 2000);
 
     return () => clearInterval(pollInterval);
-  }, [isGenerating, loadBriefs]);
+  }, [isGenerating, generatingDate, loadBriefs]);
 
   const handleGenerate = async () => {
     try {
@@ -271,18 +328,30 @@ export default function BriefPage() {
       setError(null);
       setGenerationStep('Starting...');
 
-      const today = new Date().toISOString().split('T')[0];
+      // Generate yesterday's brief (not today's - today's news isn't complete yet)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      
+      setGeneratingDate(yesterdayStr);
+      
       const response = await fetch('/api/brief/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ date: today }),
+        body: JSON.stringify({ date: yesterdayStr }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        
+        // Handle 409 Conflict (brief already exists with same article count)
+        if (response.status === 409) {
+          throw new Error(errorData.message || `Brief already exists for ${yesterdayStr}`);
+        }
+        
         throw new Error(errorData.error || 'Failed to start generation');
       }
 
@@ -291,6 +360,7 @@ export default function BriefPage() {
       console.error('Error generating brief:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate brief');
       setIsGenerating(false);
+      setGeneratingDate(null);
     }
   };
 
@@ -300,7 +370,8 @@ export default function BriefPage() {
     }
   };
 
-  const formatDate = (dateStr: string): string => {
+  // Format day name (e.g., "Monday" or "Yesterday")
+  const formatDayName = (dateStr: string): string => {
     const date = new Date(dateStr);
     const today = new Date();
     const yesterday = new Date(today);
@@ -312,22 +383,38 @@ export default function BriefPage() {
       return 'Yesterday';
     } else {
       return date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+        weekday: 'long',
       });
-      }
+    }
   };
 
-  const formatDateLong = (dateStr: string): string => {
+  // Format full date (e.g., "January 16, 2026")
+  const formatDateFull = (dateStr: string): string => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {
-      weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
+  };
+
+  // Format duration in seconds to "X min" or "X:XX"
+  const formatDuration = (seconds: number | string | undefined | null): string | null => {
+    // Convert to number if string
+    const numSeconds = typeof seconds === 'string' ? parseFloat(seconds) : seconds;
+    
+    if (!numSeconds || isNaN(numSeconds) || numSeconds <= 0) return null;
+    
+    const mins = Math.floor(numSeconds / 60);
+    const secs = Math.floor(numSeconds % 60);
+    
+    if (mins === 0) {
+      return `${secs}s`;
+    } else if (secs === 0) {
+      return `${mins} min`;
+    } else {
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
   };
 
   // If a brief is selected, show player
@@ -341,13 +428,28 @@ export default function BriefPage() {
           thumbnail={selectedBrief.thumbnail}
           onClose={() => setSelectedBrief(null)}
           onDelete={async () => {
-            // TODO: Implement delete brief functionality
-            // This would delete the brief run and audio file
-            console.log('Delete brief:', selectedBrief.date);
-            // For now, just close the player
-            setSelectedBrief(null);
-            // Reload briefs to update the list
-            await loadBriefs(0, false);
+            if (!confirm(`Are you sure you want to delete the brief for ${formatDateFull(selectedBrief.date)}?`)) {
+              return;
+            }
+
+            try {
+              const response = await fetch(`/api/brief/${selectedBrief.date}`, {
+                method: 'DELETE',
+                credentials: 'include',
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to delete brief');
+              }
+
+              // Close player and reload briefs
+              setSelectedBrief(null);
+              await loadBriefs(0, false);
+            } catch (err) {
+              console.error('Error deleting brief:', err);
+              setError(err instanceof Error ? err.message : 'Failed to delete brief');
+            }
           }}
         />
       </div>
@@ -391,7 +493,7 @@ export default function BriefPage() {
             }
           }}
         >
-          {isGenerating ? 'Generating...' : 'Generate Brief'}
+          {isGenerating ? 'Generating...' : "Generate yesterday's brief"}
         </button>
       </div>
 
@@ -460,28 +562,39 @@ export default function BriefPage() {
               <div className="flex gap-4 lg:gap-6">
                 {/* Text content - left side */}
                 <div className="flex-1 min-w-0">
-                  {/* Date */}
+                  {/* Day name (e.g., "Monday" or "Yesterday") */}
                   <div 
                     className="text-sm mb-2"
                     style={{ color: 'var(--theme-text-muted)' }}
                   >
-                    {formatDate(brief.date)}
+                    {formatDayName(brief.date)}
                   </div>
 
-                  {/* Title */}
+                  {/* Title - Full date (e.g., "January 16, 2026") */}
                   <h2 
                     className="text-xl sm:text-2xl font-bold mb-3 leading-tight"
                     style={{ color: 'var(--theme-text)' }}
                   >
-                    {formatDateLong(brief.date)}
+                    {formatDateFull(brief.date)}
                   </h2>
 
-                  {/* Metadata line: article count and play button */}
+                  {/* Metadata line: article count, duration, and play button */}
                   <div 
                     className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-sm"
                     style={{ color: 'var(--theme-text-muted)' }}
                   >
                     <span>{brief.articleCount} {brief.articleCount === 1 ? 'article' : 'articles'}</span>
+                    {(() => {
+                      // Use duration from metadata first, fallback to duration loaded from audio file
+                      const duration = brief.run?.metadata?.totalDuration || brief.duration;
+                      const formattedDuration = formatDuration(duration);
+                      return formattedDuration ? (
+                        <>
+                          <span>·</span>
+                          <span>{formattedDuration}</span>
+                        </>
+                      ) : null;
+                    })()}
                     {brief.audioUrl && (
                       <>
                         <span>·</span>

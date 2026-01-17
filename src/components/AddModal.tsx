@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -17,6 +17,48 @@ export default function AddModal({ isOpen, onClose, onAddFeed, onAddArticle }: A
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to input when modal opens or when keyboard appears
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      // Small delay to ensure keyboard is open on mobile
+      const timeoutId = setTimeout(() => {
+        inputRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center',
+        });
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isOpen]);
+
+  // Handle keyboard visibility changes on mobile
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleResize = () => {
+      if (inputRef.current && modalRef.current) {
+        // Scroll to keep input visible when keyboard appears
+        setTimeout(() => {
+          inputRef.current?.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+          });
+        }, 100);
+      }
+    };
+
+    // Listen for viewport changes (keyboard opening/closing)
+    window.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -81,22 +123,39 @@ export default function AddModal({ isOpen, onClose, onAddFeed, onAddArticle }: A
       <div
         className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm"
         onClick={handleClose}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
       />
       
-      {/* Modal */}
+      {/* Modal container - scrollable on mobile */}
       <div
-        className="fixed inset-0 z-[151] flex items-end sm:items-center justify-center p-4"
+        className="fixed inset-0 z-[151] overflow-y-auto sm:overflow-y-visible sm:flex sm:items-center sm:justify-center p-4"
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             handleClose();
           }
         }}
+        style={{
+          // Use visual viewport on mobile for proper keyboard handling
+          ...(typeof window !== 'undefined' && window.visualViewport && window.innerWidth < 640
+            ? { maxHeight: `${window.visualViewport.height}px` }
+            : {}
+          ),
+        }}
       >
         <div
-          className="w-full max-w-md shadow-xl"
+          ref={modalRef}
+          className="w-full max-w-md shadow-xl sm:my-auto"
           style={{
             backgroundColor: 'var(--theme-card-bg)',
             border: '1px solid var(--theme-border)',
+            marginTop: 'auto',
+            marginBottom: 'auto',
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -205,6 +264,7 @@ export default function AddModal({ isOpen, onClose, onAddFeed, onAddArticle }: A
                 {addType === 'feed' ? 'Feed URL' : 'Article URL'}
               </label>
               <input
+                ref={inputRef}
                 id="add-url"
                 type="text"
                 value={url}
@@ -231,6 +291,15 @@ export default function AddModal({ isOpen, onClose, onAddFeed, onAddArticle }: A
                     e.currentTarget.style.borderColor = 'var(--theme-accent)';
                     e.currentTarget.style.outline = '1px solid var(--theme-accent)';
                     e.currentTarget.style.outlineOffset = '-1px';
+                  }
+                  // Scroll input into view on mobile when keyboard appears
+                  if (window.innerWidth < 640) {
+                    setTimeout(() => {
+                      e.currentTarget.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'center',
+                      });
+                    }, 300);
                   }
                 }}
                 onBlur={(e) => {
