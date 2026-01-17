@@ -233,15 +233,9 @@ export const storage = {
       const endpoint = params.toString() ? `items?${params}` : 'items';
       const items = await apiRequest<FeedItem[]>(endpoint);
       
-      // Only cache if getting all items
-      // Don't fail if caching fails - return the API data anyway
-      if (!options?.status && !options?.feedId) {
-        try {
-          saveToLocalStorage(FEED_ITEMS_KEY, items);
-        } catch (cacheError) {
-          console.warn('[Storage] Failed to cache items, but continuing with API data:', cacheError);
-        }
-      }
+      // Skip caching feed items - they're stored in Supabase and can be large
+      // localStorage has quota limits (~5-10MB) and 249+ items with full content exceeds it
+      // The API is the source of truth, so caching is not necessary
       
       console.log('[Storage] Successfully fetched items:', items.length, options);
       return items;
