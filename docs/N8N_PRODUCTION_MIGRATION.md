@@ -1,14 +1,24 @@
 # n8n Production Migration Guide
 
-**Complete step-by-step guide for migrating your Daily Brief workflow from Dev to Production**
+**⚠️ NOTE: Daily Brief is currently DEV-ONLY**
+
+Daily Brief is only available in development (localhost). It requires a local n8n instance and is not deployed to production to avoid additional hosting costs. This guide documents the implementation for reference and future production deployment if needed.
+
+**Current Status:**
+- ✅ **Dev**: Daily Brief is fully functional (requires local n8n at `localhost:5678`)
+- ❌ **Prod**: Daily Brief is hidden/disabled (not deployed to production)
+
+---
+
+**Original Guide (for reference/future production deployment):**
 
 ---
 
 ## Prerequisites
 
 Before starting, ensure you have:
-- ✅ Production backend URL: `https://thesignal.brentlarue.me`
-- ✅ Production n8n instance running (publicly accessible)
+- ✅ Production backend URL: `https://thesignal.brentlarue.me` (deployed on Render)
+- ✅ Production n8n instance running on Render (publicly accessible) - **See Step 5.5 if not yet deployed**
 - ✅ Production API key (for backend API access) - **Generate in Step 1**
 
 **Note:** If you're using the **same Supabase, OpenAI, and ElevenLabs keys** for dev and prod, you don't need to update those - they can stay the same.
@@ -244,15 +254,111 @@ return {
 
 ---
 
-## Step 6: Verify Webhook URL
+## Step 5.5: Deploy n8n on Render (If Not Already Done)
 
-1. **In n8n**, open your production workflow
-2. **Click the "Webhook" node** (bottom left)
-3. **Copy the webhook URL** (should be something like: `https://YOUR_N8N_INSTANCE.com/webhook/XXXXX`)
-4. **Set this URL in your production backend environment variable**:
-   - Variable: `N8N_WEBHOOK_URL`
-   - Value: `https://YOUR_N8N_INSTANCE.com/webhook/XXXXX`
-5. **Restart your production backend** to pick up the new webhook URL
+Your production n8n instance must be publicly accessible (not `localhost`). If you haven't deployed n8n to Render yet:
+
+### ⚠️ IMPORTANT: Export Your Workflow First!
+
+**Before deploying**, export your production workflow from local n8n:
+
+1. **In your local n8n** (`localhost:5678`):
+   - Open your production workflow: **"Daily Brief - With Summaries (Production)"**
+   - Click **"..." menu** (top right) → **"Download"**
+   - Save the JSON file (e.g., `daily-brief-production.json`)
+
+**This way you can import it into the new Render n8n instance - you won't have to recreate it!**
+
+### Option A: Deploy n8n Using Docker (Recommended - No Repository Needed)
+
+**You don't need to connect any repository!** n8n can be deployed directly using Docker.
+
+1. **In Render Dashboard:**
+   - Click **"New +"** → **"Web Service"**
+   - Select the **"Existing Image"** tab
+   - **Image URL field**: Replace the placeholder with `n8nio/n8n`
+   - **Credential (Optional)**: Leave as "No credential" (n8n image is public)
+   - Click **"Connect"**
+
+2. **Configure n8n Service:**
+   - **Name**: `n8n-production` (or similar)
+   - **Region**: Choose closest to your backend
+   - **Branch**: (N/A for Docker image deployment)
+   - **Instance Type**: Starter ($7/month) should be fine for n8n
+   - Click **"Create Web Service"**
+
+3. **Set Environment Variables in Render:**
+   - Go to your n8n service → **Environment** tab
+   - Add these variables:
+     - `N8N_BASIC_AUTH_ACTIVE=true`
+     - `N8N_BASIC_AUTH_USER=your_username` (choose a username)
+     - `N8N_BASIC_AUTH_PASSWORD=your_secure_password` (choose a secure password)
+     - `N8N_HOST=your-n8n-service.onrender.com` (will be set automatically after first deploy)
+     - `N8N_PROTOCOL=https`
+     - `PORT=5678` (or use `$PORT` if Render auto-sets it)
+
+4. **Deploy:**
+   - Click **"Create Web Service"**
+   - Wait for deployment to complete
+   - Your n8n will be available at: `https://your-n8n-service.onrender.com`
+
+5. **Access n8n and import workflow:**
+   - Visit `https://your-n8n-service.onrender.com`
+   - Log in with the username/password you set above
+   - Click **"..." menu** (top right) → **"Import from File"**
+   - Upload the JSON file you exported earlier (`daily-brief-production.json`)
+   - Your production workflow will be restored! ✅
+
+**Note:** If you need to export from dev n8n, do it before deploying to Render.
+
+### Option B: Use a Simple Repository (Alternative)
+
+If Render requires a repository connection:
+
+1. **Create a minimal repo** (or use existing n8n config repo if you have one)
+   - Create a new GitHub repo (separate from vibe-reader)
+   - Add a simple `Dockerfile`:
+     ```dockerfile
+     FROM n8nio/n8n
+     ```
+   - Push to GitHub
+
+2. **Connect this minimal repo to Render** (not your vibe-reader repo!)
+
+3. **Follow steps 3-5 from Option A above**
+
+**Note:** Your **vibe-reader repo is NOT needed** for hosting n8n. n8n is a completely separate service.
+
+**After deployment, proceed to Step 6 to get your webhook URL.**
+
+---
+
+## Step 6: Get Production Webhook URL
+
+1. **In your production n8n** (deployed on Render):
+   - Open your production workflow: **"Daily Brief - With Summaries (Production)"**
+   - **Click the "Webhook" node** (bottom left)
+
+2. **Copy the Production Webhook URL:**
+   - In the "Webhook URLs" section, **"Production URL"** tab
+   - Copy the URL (should be something like: `https://your-n8n-service.onrender.com/webhook/601b1290-bff0-4d56-835a-dd5ff30c45b4`)
+   - ⚠️ **IMPORTANT**: This must be a `https://` URL, NOT `localhost`!
+
+3. **Set this URL in your production backend (Render):**
+   - Go to Render Dashboard → Your Backend Service → **Environment** tab
+   - Add/Update environment variable:
+     - **Variable**: `N8N_WEBHOOK_URL`
+     - **Value**: `https://your-n8n-service.onrender.com/webhook/XXXXX` (the URL you copied)
+   - **Click "Save Changes"**
+
+4. **Restart your production backend:**
+   - Render will automatically restart after saving environment variables
+   - **OR** manually restart: Render Dashboard → Your Service → **Manual Deploy** → **Clear build cache & deploy**
+
+5. **Verify it's loaded:**
+   - Check backend logs in Render Dashboard
+   - Look for: `[ENV] ✓ N8N_WEBHOOK_URL is set`
+   - Should show your Render n8n URL (not localhost!)
 
 ---
 
@@ -296,8 +402,11 @@ OPENAI_API_KEY=YOUR_PRODUCTION_OPENAI_KEY
 - **Check**: API key was generated from production app (not dev)
 
 ### ❌ "n8n webhook URL not configured"
-- **Check**: `N8N_WEBHOOK_URL` is set in production backend `.env`
-- **Check**: Backend was restarted after setting the variable
+- **Check**: `N8N_WEBHOOK_URL` is set in production backend environment variables (Render Dashboard → Environment)
+- **Check**: URL is a **public Render URL** (like `https://your-n8n.onrender.com/webhook/...`), NOT `localhost:5678`
+- **Check**: Backend was restarted after setting the variable (Render auto-restarts, but verify in logs)
+- **Check**: n8n is deployed and running on Render (not just running locally)
+- **Check backend logs**: Look for `[ENV] ✓ N8N_WEBHOOK_URL is set` - should show your Render URL
 
 ### ❌ "ElevenLabs Authorization failed"
 - **Check**: `xi-api-key` header (not `Authorization`)
@@ -343,6 +452,6 @@ Before going live, verify:
 ---
 
 **Questions? Check the logs:**
-- n8n execution logs (in n8n UI)
-- Production backend logs (Render dashboard or wherever hosted)
+- n8n execution logs (in n8n UI on Render)
+- Production backend logs (Render Dashboard → Your Service → Logs)
 - Browser console (for frontend errors)

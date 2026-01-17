@@ -31,6 +31,14 @@ if (envResult.error) {
   } else {
     console.warn('[ENV] ⚠ SUPABASE_SERVICE_ROLE_KEY is NOT set in .env file');
   }
+  if (process.env.N8N_WEBHOOK_URL) {
+    console.log('[ENV] ✓ N8N_WEBHOOK_URL is set');
+    // Log first/last chars for security (don't expose full URL)
+    const url = process.env.N8N_WEBHOOK_URL;
+    console.log(`[ENV]   N8N_WEBHOOK_URL: ${url.substring(0, 30)}...${url.substring(url.length - 10)}`);
+  } else {
+    console.warn('[ENV] ⚠ N8N_WEBHOOK_URL is NOT set in .env file');
+  }
 }
 
 // Now import Supabase (which needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)

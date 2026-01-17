@@ -24,6 +24,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
   const { theme } = useTheme();
   
   // Detect if we're in dev environment (localhost or dev domain)
+  // Daily Brief is dev-only feature (requires local n8n instance)
   const isDev = useMemo(() => {
     const hostname = window.location.hostname;
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
@@ -41,7 +42,8 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
   const navItems = [
     { path: '/inbox', label: 'Inbox' },
-    { path: '/brief', label: 'Daily Brief' },
+    // Daily Brief is dev-only (requires local n8n instance)
+    ...(isDev ? [{ path: '/brief', label: 'Daily Brief' }] : []),
     { path: '/saved', label: 'Later' },
     { path: '/bookmarks', label: 'Bookmarks' },
     { path: '/notes', label: 'Notes' },
