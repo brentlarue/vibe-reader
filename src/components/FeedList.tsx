@@ -1,7 +1,7 @@
 import { FeedItem, Feed } from '../types';
 import FeedItemCard from './FeedItemCard';
 import PullToRefresh from './PullToRefresh';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
 import { useLocation } from 'react-router-dom';
 import { itemBelongsToFeed } from '../utils/feedMatching';
@@ -16,15 +16,6 @@ interface FeedListProps {
 }
 
 type SortOrder = 'newest' | 'oldest' | 'longest' | 'shortest';
-
-// Helper function to calculate word count from article content
-const getWordCount = (item: FeedItem): number => {
-  const content = item.fullContent || item.contentSnippet || '';
-  // Strip HTML tags and get plain text
-  const text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  // Count words (split by whitespace and filter out empty strings)
-  return text.split(/\s+/).filter(word => word.length > 0).length;
-};
 
 export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: FeedListProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
