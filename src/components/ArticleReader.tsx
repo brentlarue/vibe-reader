@@ -811,8 +811,8 @@ export default function ArticleReader() {
       setItem({ ...item, status: newStatus });
       // Trigger event for other components to update
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-      // Navigate to next item after action
-      navigateToNext();
+      // Return to previous page/state
+      handleBack();
     } catch (error) {
       console.error('Error updating item status:', error);
     }
@@ -848,8 +848,8 @@ export default function ArticleReader() {
       await storage.removeFeedItem(item.id);
       // Trigger event for other components
       window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-      // Navigate to next item after deletion
-      navigateToNext();
+      // Return to previous page/state
+      handleBack();
     }
   };
 
@@ -1191,13 +1191,13 @@ export default function ArticleReader() {
   const hadContentFromFeed = !!(item.fullContent || item.contentSnippet);
 
   // Navigate back to the list view (not browser history)
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (navContext?.returnPath) {
       navigate(navContext.returnPath);
     } else {
       navigate('/inbox');
     }
-  };
+  }, [navContext, navigate]);
 
   return (
     <>
