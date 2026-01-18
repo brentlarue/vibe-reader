@@ -284,9 +284,9 @@ export const storage = {
         body: JSON.stringify(items),
       });
       
-      // Refresh local cache
-      const allItems = await storage.getFeedItems();
-      saveToLocalStorage(FEED_ITEMS_KEY, allItems);
+      // Don't cache to localStorage - items are stored in Supabase
+      // localStorage has quota limits (~5-10MB) and caching 260+ items exceeds it
+      // The API is the source of truth, so caching is not necessary
     } catch (error) {
       console.error('Failed to upsert feed items:', error);
       throw error;
