@@ -1191,13 +1191,13 @@ export default function ArticleReader() {
   const hadContentFromFeed = !!(item.fullContent || item.contentSnippet);
 
   // Navigate back to the list view (not browser history)
-  const handleBack = useCallback(() => {
+  const handleBack = () => {
     if (navContext?.returnPath) {
       navigate(navContext.returnPath);
     } else {
       navigate('/inbox');
     }
-  }, [navContext, navigate]);
+  };
 
   return (
     <>
