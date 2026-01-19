@@ -865,7 +865,6 @@ export default function ArticleReader() {
     console.log('[Highlight] Total highlight plans to apply:', highlightPlans.length);
     
     // ✅ Apply all highlights in REVERSE order to avoid position shifts
-    let appliedCount = 0;
     highlightPlans.sort((a, b) => b.nodeIndex - a.nodeIndex).forEach(plan => {
       const { node, text } = textNodes[plan.nodeIndex];
       
