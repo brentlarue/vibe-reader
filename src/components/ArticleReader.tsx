@@ -669,7 +669,7 @@ export default function ArticleReader() {
     setNoteText('');
   };
 
-  // Apply highlights to content
+  // Apply highlights to content - handles text spanning multiple elements (bold, italic, line breaks, etc.)
   const applyHighlightsToContent = useCallback((htmlContent: string, highlights: Annotation[]): string => {
     if (!highlights || highlights.length === 0) return htmlContent;
 
@@ -680,71 +680,223 @@ export default function ArticleReader() {
     
     if (!container) return htmlContent;
 
+    // ✅ Helper to check if element is block-level
+    const isBlockElement = (el: Element | null): boolean => {
+      if (!el) return false;
+      const blockTags = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'HR', 'BR'];
+      return blockTags.includes(el.tagName);
+    };
+
+    // ✅ Build text nodes list ONCE (before applying any highlights)
+    const walker = doc.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    const textNodes: { node: Text; start: number; end: number; text: string }[] = [];
+    const fullTextParts: string[] = [];
+    let currentPos = 0;
+    let lastBlockElement: Element | null = null;
+    let node;
+    
+    while (node = walker.nextNode()) {
+      const textNode = node as Text;
+      const directParent = textNode.parentElement;
+      
+      // Skip if already inside a mark tag (from previous highlights in DB)
+      let checkParent = directParent;
+      let isInsideMark = false;
+      while (checkParent && checkParent !== container) {
+        if (checkParent.tagName === 'MARK') {
+          isInsideMark = true;
+          break;
+        }
+        checkParent = checkParent.parentElement;
+      }
+      
+      if (!isInsideMark) {
+        const text = textNode.textContent || '';
+        
+        // Find the nearest block-level parent (start from the ORIGINAL parent)
+        let blockParent: Element | null = directParent;
+        while (blockParent && blockParent !== container && !isBlockElement(blockParent)) {
+          blockParent = blockParent.parentElement;
+        }
+        
+        // ✅ Add newline between different block-level elements
+        if (lastBlockElement && blockParent !== lastBlockElement && isBlockElement(lastBlockElement)) {
+          fullTextParts.push('\n');
+          currentPos += 1;
+        }
+        
+        fullTextParts.push(text);
+        textNodes.push({
+          node: textNode,
+          start: currentPos,
+          end: currentPos + text.length,
+          text: text
+        });
+        currentPos += text.length;
+        lastBlockElement = blockParent;
+      }
+    }
+    
+    const fullText = fullTextParts.join('');
+    
+    // ✅ Plan all highlights first (find their positions)
+    interface HighlightPlan {
+      nodeIndex: number;
+      startInNode: number;
+      endInNode: number;
+    }
+    
+    const highlightPlans: HighlightPlan[] = [];
+    
     // Sort highlights by length (longest first) to avoid partial matches
     const sortedHighlights = [...highlights].sort((a, b) => b.content.length - a.content.length);
+
+    // Debug: Log the full text structure (only once, not for each highlight)
+    if (highlights.length > 0) {
+      console.log('[Highlight Debug] fullText length:', fullText.length);
+      console.log('[Highlight Debug] fullText preview (first 500 chars):', JSON.stringify(fullText.substring(0, 500)));
+      console.log('[Highlight Debug] Number of text nodes:', textNodes.length);
+      console.log('[Highlight Debug] Block boundaries (newline positions):', 
+        [...fullText].map((c, i) => c === '\n' ? i : null).filter(x => x !== null)
+      );
+    }
 
     sortedHighlights.forEach(highlight => {
       const searchText = highlight.content.trim();
       if (!searchText) return;
 
-      // Get all text nodes recursively
-      const walker = doc.createTreeWalker(
-        container,
-        NodeFilter.SHOW_TEXT,
-        null
-      );
+      console.log('[Highlight Debug] Searching for:', JSON.stringify(searchText.substring(0, 100)));
 
-      const textNodes: Text[] = [];
-      let node;
-      while (node = walker.nextNode()) {
-        // Skip if already inside a mark tag
-        let parent = node.parentElement;
-        let isInsideMark = false;
-        while (parent && parent !== container) {
-          if (parent.tagName === 'MARK') {
-            isInsideMark = true;
-            break;
-          }
-          parent = parent.parentElement;
-        }
-        if (!isInsideMark) {
-          textNodes.push(node as Text);
-        }
-      }
-
-      // Search and highlight
-      textNodes.forEach(textNode => {
-        const text = textNode.textContent || '';
-        const searchLower = searchText.toLowerCase();
-        const textLower = text.toLowerCase();
-        const index = textLower.indexOf(searchLower);
+      // Create regex pattern that matches text with flexible whitespace
+      const escapedText = searchText
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+        .replace(/\s+/g, '\\s+'); // Match any whitespace (spaces, newlines, tabs)
+      
+      const searchRegex = new RegExp(escapedText, 'i');
+      const match = fullText.match(searchRegex);
+      
+      if (!match || match.index === undefined) {
+        // Fallback: Try normalized whitespace matching
+        // Collapse all whitespace to single spaces for comparison
+        const normalizedSearch = searchText.replace(/\s+/g, ' ');
+        const normalizedFull = fullText.replace(/\s+/g, ' ');
         
-        if (index !== -1) {
-          const beforeText = text.substring(0, index);
-          const matchText = text.substring(index, index + searchText.length);
-          const afterText = text.substring(index + searchText.length);
-
-          const mark = doc.createElement('mark');
-          // Kindle-like transparent yellow highlight
-          mark.style.backgroundColor = 'rgba(255, 235, 59, 0.35)';
-          mark.style.padding = '2px 0';
-          mark.style.borderRadius = '2px';
-          // Ensure text color remains readable in all themes (especially dark)
-          mark.style.color = 'inherit';
-          mark.textContent = matchText;
-
-          const fragment = doc.createDocumentFragment();
-          if (beforeText) {
-            fragment.appendChild(doc.createTextNode(beforeText));
+        const normalizedIndex = normalizedFull.toLowerCase().indexOf(normalizedSearch.toLowerCase());
+        
+        if (normalizedIndex === -1) {
+          console.warn('[Highlight] Text not found even with normalization.');
+          console.warn('[Highlight] SearchText has newlines:', searchText.includes('\n'));
+          return;
+        }
+        
+        // Found with normalization - now we need to map back to original positions
+        // Count how many characters in original fullText correspond to normalizedIndex
+        let origPos = 0;
+        let normPos = 0;
+        let inWhitespace = false;
+        
+        while (normPos < normalizedIndex && origPos < fullText.length) {
+          const char = fullText[origPos];
+          if (/\s/.test(char)) {
+            if (!inWhitespace) {
+              normPos++; // Count first whitespace char
+              inWhitespace = true;
+            }
+          } else {
+            normPos++;
+            inWhitespace = false;
           }
-          fragment.appendChild(mark);
-          if (afterText) {
-            fragment.appendChild(doc.createTextNode(afterText));
+          origPos++;
+        }
+        
+        const matchStart = origPos;
+        
+        // Now find the end position
+        let searchIdx = 0;
+        while (searchIdx < normalizedSearch.length && origPos < fullText.length) {
+          const char = fullText[origPos];
+          if (/\s/.test(char)) {
+            if (!inWhitespace) {
+              searchIdx++; // Count first whitespace char in pattern
+              inWhitespace = true;
+            }
+          } else {
+            searchIdx++;
+            inWhitespace = false;
           }
+          origPos++;
+        }
+        
+        const matchEnd = origPos;
+        
+        console.log('[Highlight] FOUND with normalization at position', matchStart, '-', matchEnd);
+        
+        // Find which text nodes contain this highlight
+        textNodes.forEach(({ start, end }, nodeIndex) => {
+          if (start < matchEnd && end > matchStart) {
+            highlightPlans.push({
+              nodeIndex,
+              startInNode: Math.max(0, matchStart - start),
+              endInNode: Math.min(textNodes[nodeIndex].text.length, matchEnd - start)
+            });
+          }
+        });
+        
+        return; // Skip the normal flow since we handled it
+      }
+      
+      console.log('[Highlight] FOUND at position', match.index, '-', match.index + match[0].length);
 
-          textNode.parentNode?.replaceChild(fragment, textNode);
+      const matchStart = match.index;
+      const matchEnd = matchStart + match[0].length;
+
+      // Find which text nodes contain this highlight
+      textNodes.forEach(({ start, end }, nodeIndex) => {
+        if (start < matchEnd && end > matchStart) {
+          highlightPlans.push({
+            nodeIndex,
+            startInNode: Math.max(0, matchStart - start),
+            endInNode: Math.min(textNodes[nodeIndex].text.length, matchEnd - start)
+          });
         }
       });
+    });
+
+    console.log('[Highlight] Total highlight plans to apply:', highlightPlans.length);
+    
+    // ✅ Apply all highlights in REVERSE order to avoid position shifts
+    let appliedCount = 0;
+    highlightPlans.sort((a, b) => b.nodeIndex - a.nodeIndex).forEach(plan => {
+      const { node, text } = textNodes[plan.nodeIndex];
+      
+      // Skip if node is no longer in the DOM (already modified)
+      if (!node.parentNode) return;
+      
+      const beforeText = text.substring(0, plan.startInNode);
+      const matchText = text.substring(plan.startInNode, plan.endInNode);
+      const afterText = text.substring(plan.endInNode);
+
+      const fragment = doc.createDocumentFragment();
+      
+      if (beforeText) {
+        fragment.appendChild(doc.createTextNode(beforeText));
+      }
+      
+      if (matchText) {
+        const mark = doc.createElement('mark');
+        mark.style.backgroundColor = 'rgba(255, 235, 59, 0.35)';
+        mark.style.padding = '2px 0';
+        mark.style.borderRadius = '2px';
+        mark.style.color = 'inherit';
+        mark.textContent = matchText;
+        fragment.appendChild(mark);
+      }
+      
+      if (afterText) {
+        fragment.appendChild(doc.createTextNode(afterText));
+      }
+
+      node.parentNode.replaceChild(fragment, node);
     });
 
     return container.innerHTML;
