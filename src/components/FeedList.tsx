@@ -219,12 +219,17 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
         );
 
         if (olderItems.length > 0) {
-          // Upsert the older items
-          await storage.upsertFeedItems(selectedFeedId, olderItems.map(item => ({
+          const itemsToSave = olderItems.map(item => ({
             ...item,
             source: feedTitle,
-          })));
-          
+          }));
+          await storage.upsertFeedItems(selectedFeedId, itemsToSave);
+
+          // Fetch full content for excerpt-only items (most recent first)
+          storage.fetchContentForItems(itemsToSave).catch((err) => {
+            console.warn('Background content fetch for older items failed:', err);
+          });
+
           // Refresh the items list
           loadItems();
           window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
