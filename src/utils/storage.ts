@@ -394,6 +394,31 @@ export const storage = {
   },
 
   /**
+   * Fetch full content for items that only have excerpts. Runs in background, most recent first.
+   * Dispatches feedItemsUpdated after each successful fetch so UI updates progressively.
+   */
+  fetchContentForItems: async (items: FeedItem[], onItemFetched?: () => void): Promise<void> => {
+    const MIN_CONTENT_LENGTH = 500;
+    const needsContent = items
+      .filter((item) => {
+        const len = (item.fullContent || item.contentSnippet || '').length;
+        return len < MIN_CONTENT_LENGTH && item.url?.startsWith('http');
+      })
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+    for (const item of needsContent) {
+      try {
+        await storage.fetchContentForItem(item.id);
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+        onItemFetched?.();
+      } catch (err) {
+        console.warn(`Could not fetch content for ${item.title}:`, err);
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  },
+
+  /**
    * Update a feed item's AI feature (insightful-reply, investor-analysis, founder-implications)
    */
   updateItemAIFeature: async (itemId: string, featureType: 'insightful-reply' | 'investor-analysis' | 'founder-implications', content: string): Promise<FeedItem> => {

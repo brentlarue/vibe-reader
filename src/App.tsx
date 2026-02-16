@@ -166,11 +166,16 @@ function App() {
         if (feedItems.length > 0) {
           console.log(`Refresh feed ${feed.url}: got ${feedItems.length} new items after deduplication`);
           
-          // Upsert items for this feed
-          await storage.upsertFeedItems(feed.id, feedItems.map(item => ({
+          const itemsToSave = feedItems.map(item => ({
             ...item,
             source: feedTitle,
-          })));
+          }));
+          await storage.upsertFeedItems(feed.id, itemsToSave);
+
+          // Fetch full content for items with only excerpts (most recent first)
+          storage.fetchContentForItems(itemsToSave).catch((err) => {
+            console.warn('Background content fetch failed:', err);
+          });
         } else {
           console.log(`Refresh feed ${feed.url}: no new items`);
         }
