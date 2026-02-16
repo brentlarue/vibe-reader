@@ -375,6 +375,25 @@ export const storage = {
   },
 
   /**
+   * Fetch full article content from the item's URL (for feeds that only provide excerpts)
+   */
+  fetchContentForItem: async (itemId: string): Promise<FeedItem> => {
+    const encodedId = encodeURIComponent(itemId);
+    const updated = await apiRequest<FeedItem>(`items/${encodedId}/fetch-content`, {
+      method: 'POST',
+    });
+
+    // Update local cache
+    const items = fallbackToLocalStorage<FeedItem[]>(FEED_ITEMS_KEY, []);
+    const updatedItems = items.map(item =>
+      item.id === itemId ? { ...item, fullContent: updated.fullContent, contentSnippet: updated.contentSnippet ?? item.contentSnippet } : item
+    );
+    saveToLocalStorage(FEED_ITEMS_KEY, updatedItems);
+
+    return updated;
+  },
+
+  /**
    * Update a feed item's AI feature (insightful-reply, investor-analysis, founder-implications)
    */
   updateItemAIFeature: async (itemId: string, featureType: 'insightful-reply' | 'investor-analysis' | 'founder-implications', content: string): Promise<FeedItem> => {

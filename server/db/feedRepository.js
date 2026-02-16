@@ -761,6 +761,45 @@ export async function reassociateFeedItem(itemId, feedId, source) {
 }
 
 /**
+ * Update a feed item's full content (for fetching article body when RSS only has excerpt)
+ * @param {string} itemId - Item UUID or external_id or URL
+ * @param {string} fullContent - Full HTML content
+ * @param {string} [contentSnippet] - Optional excerpt/snippet
+ * @returns {Promise<Object>} Updated item
+ */
+export async function updateFeedItemContent(itemId, fullContent, contentSnippet) {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const item = await getFeedItem(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  const env = getAppEnv();
+  const updates = { full_content: fullContent };
+  if (contentSnippet != null) {
+    updates.content_snippet = contentSnippet;
+  }
+
+  const { data, error } = await supabase
+    .from('feed_items')
+    .update(updates)
+    .eq('id', item.id)
+    .eq('env', env)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] Error updating feed item content:', error);
+    throw error;
+  }
+
+  return transformFeedItem(data);
+}
+
+/**
  * Delete a feed item (supports UUID or external_id/URL lookup)
  * @param {string} itemId - Item UUID or external_id or URL
  * @returns {Promise<void>}

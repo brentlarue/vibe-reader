@@ -248,6 +248,7 @@ export default function ArticleReader() {
     // Reset state when ID changes
     setItem(null);
     setHasAttemptedLoad(false);
+    hasFetchedContentRef.current = null;
 
     const loadArticle = async () => {
       // Decode the ID in case it was URL-encoded in the route
@@ -323,6 +324,40 @@ export default function ArticleReader() {
     
     loadArticle();
   }, [id]);
+
+  // Fetch full content when item has only excerpt (e.g., steipete.me and similar RSS feeds)
+  const hasFetchedContentRef = useRef<string | null>(null);
+  const [isFetchingContent, setIsFetchingContent] = useState(false);
+  useEffect(() => {
+    if (!item || !item.url || !item.url.startsWith('http')) return;
+    if (hasFetchedContentRef.current === item.id) return;
+
+    const contentLength = (item.fullContent || item.contentSnippet || '').length;
+    // If we have substantial content (>500 chars), assume it's the full article
+    if (contentLength > 500) return;
+
+    let cancelled = false;
+    setIsFetchingContent(true);
+    hasFetchedContentRef.current = item.id;
+
+    storage.fetchContentForItem(item.id)
+      .then((updated) => {
+        if (!cancelled && updated.fullContent) {
+          setItem((prev) => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('Could not fetch full content:', err.message);
+        }
+        hasFetchedContentRef.current = null; // Allow retry on next visit
+      })
+      .finally(() => {
+        if (!cancelled) setIsFetchingContent(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [item?.id, item?.url, item?.fullContent, item?.contentSnippet]);
 
   // Reload highlights and notes when annotations are updated (e.g., deleted from Notes page)
   useEffect(() => {
@@ -751,21 +786,9 @@ export default function ArticleReader() {
     // Sort highlights by length (longest first) to avoid partial matches
     const sortedHighlights = [...highlights].sort((a, b) => b.content.length - a.content.length);
 
-    // Debug: Log the full text structure (only once, not for each highlight)
-    if (highlights.length > 0) {
-      console.log('[Highlight Debug] fullText length:', fullText.length);
-      console.log('[Highlight Debug] fullText preview (first 500 chars):', JSON.stringify(fullText.substring(0, 500)));
-      console.log('[Highlight Debug] Number of text nodes:', textNodes.length);
-      console.log('[Highlight Debug] Block boundaries (newline positions):', 
-        [...fullText].map((c, i) => c === '\n' ? i : null).filter(x => x !== null)
-      );
-    }
-
     sortedHighlights.forEach(highlight => {
       const searchText = highlight.content.trim();
       if (!searchText) return;
-
-      console.log('[Highlight Debug] Searching for:', JSON.stringify(searchText.substring(0, 100)));
 
       // Create regex pattern that matches text with flexible whitespace
       const escapedText = searchText
@@ -776,7 +799,7 @@ export default function ArticleReader() {
       const match = fullText.match(searchRegex);
       
       if (!match || match.index === undefined) {
-        // Fallback: Try normalized whitespace matching
+        // Fallback: Try normalized whitespace matching (handles newline/whitespace differences)
         // Collapse all whitespace to single spaces for comparison
         const normalizedSearch = searchText.replace(/\s+/g, ' ');
         const normalizedFull = fullText.replace(/\s+/g, ' ');
@@ -784,8 +807,6 @@ export default function ArticleReader() {
         const normalizedIndex = normalizedFull.toLowerCase().indexOf(normalizedSearch.toLowerCase());
         
         if (normalizedIndex === -1) {
-          console.warn('[Highlight] Text not found even with normalization.');
-          console.warn('[Highlight] SearchText has newlines:', searchText.includes('\n'));
           return;
         }
         
@@ -829,8 +850,6 @@ export default function ArticleReader() {
         
         const matchEnd = origPos;
         
-        console.log('[Highlight] FOUND with normalization at position', matchStart, '-', matchEnd);
-        
         // Find which text nodes contain this highlight
         textNodes.forEach(({ start, end }, nodeIndex) => {
           if (start < matchEnd && end > matchStart) {
@@ -844,8 +863,6 @@ export default function ArticleReader() {
         
         return; // Skip the normal flow since we handled it
       }
-      
-      console.log('[Highlight] FOUND at position', match.index, '-', match.index + match[0].length);
 
       const matchStart = match.index;
       const matchEnd = matchStart + match[0].length;
@@ -862,8 +879,6 @@ export default function ArticleReader() {
       });
     });
 
-    console.log('[Highlight] Total highlight plans to apply:', highlightPlans.length);
-    
     // ✅ Apply all highlights in REVERSE order to avoid position shifts
     highlightPlans.sort((a, b) => b.nodeIndex - a.nodeIndex).forEach(plan => {
       const { node, text } = textNodes[plan.nodeIndex];
@@ -1545,7 +1560,11 @@ export default function ArticleReader() {
             className="prose prose-lg max-w-none" 
             style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}
           >
-            {!hadContentFromFeed ? (
+            {isFetchingContent ? (
+              <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
+                Fetching full article…
+              </p>
+            ) : !hadContentFromFeed ? (
               <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 No content available for this article. 
                 {item.url && (

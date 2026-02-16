@@ -6,11 +6,10 @@
  */
 
 import express from 'express';
-import { JSDOM } from 'jsdom';
-import { Readability } from '@mozilla/readability';
 import * as cheerio from 'cheerio';
 import { isSupabaseConfigured } from '../db/supabaseClient.js';
 import * as feedRepo from '../db/feedRepository.js';
+import { extractContent, isPrivateHost } from '../utils/contentFetcher.js';
 
 const router = express.Router();
 
@@ -21,27 +20,6 @@ const TRACKING_PARAMS = [
   'ref', 'source', 'mc_cid', 'mc_eid',
   '_ga', '_gl', 'hsCtaTracking', 'mkt_tok',
 ];
-
-// Private/internal IP patterns for SSRF protection
-const PRIVATE_IP_PATTERNS = [
-  /^127\./,                           // Loopback
-  /^10\./,                            // Class A private
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,   // Class B private
-  /^192\.168\./,                      // Class C private
-  /^169\.254\./,                      // Link-local
-  /^0\./,                             // Current network
-  /^fc00:/i,                          // IPv6 unique local
-  /^fe80:/i,                          // IPv6 link-local
-  /^::1$/i,                           // IPv6 loopback
-  /^localhost$/i,
-];
-
-/**
- * Check if a hostname/IP is private or internal (SSRF protection)
- */
-function isPrivateHost(hostname) {
-  return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(hostname));
-}
 
 /**
  * Strip tracking parameters from URL
@@ -96,107 +74,6 @@ function extractSource(urlString) {
     return hostname;
   } catch {
     return 'Unknown';
-  }
-}
-
-/**
- * Sanitize HTML content to remove potentially dangerous elements while preserving formatting
- */
-function sanitizeHtml(html) {
-  const $ = cheerio.load(html);
-  
-  // Remove potentially dangerous elements
-  $('script, style, iframe, object, embed, form, input, button, noscript').remove();
-  
-  // Remove event handlers from all elements
-  $('*').each((_, el) => {
-    const element = $(el);
-    const attribs = element.attr();
-    if (attribs) {
-      Object.keys(attribs).forEach(attr => {
-        if (attr.startsWith('on') || attr === 'srcdoc') {
-          element.removeAttr(attr);
-        }
-      });
-    }
-  });
-  
-  // Remove javascript: links
-  $('a[href^="javascript:"]').removeAttr('href');
-  
-  return $.html();
-}
-
-/**
- * Extract readable content from HTML using Readability (preferred) or Cheerio (fallback)
- * Preserves HTML formatting for proper display
- */
-function extractContent(html, url) {
-  // Try Readability first (better quality) - preserves HTML structure
-  try {
-    const dom = new JSDOM(html, { url });
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
-    
-    // Use article.content (HTML) for full formatting, textContent for length check
-    if (article && article.content && article.textContent && article.textContent.length > 100) {
-      // Sanitize the HTML content
-      const sanitizedContent = sanitizeHtml(article.content);
-      
-      return {
-        title: article.title || '',
-        content: sanitizedContent,
-        excerpt: article.excerpt || article.textContent.slice(0, 300).trim() + '...',
-      };
-    }
-  } catch (e) {
-    console.warn('[Ingest] Readability extraction failed:', e.message);
-  }
-
-  // Fallback to Cheerio - extract HTML content
-  try {
-    const $ = cheerio.load(html);
-    
-    // Remove script, style, nav, footer, header, aside elements
-    $('script, style, nav, footer, header, aside, .sidebar, .comments, .advertisement, .ad, noscript').remove();
-    
-    // Try to find main content container and get its HTML
-    let contentHtml = '';
-    let contentText = '';
-    const mainSelectors = ['article', 'main', '.post-content', '.article-content', '.entry-content', '.content', '#content'];
-    
-    for (const selector of mainSelectors) {
-      const el = $(selector);
-      if (el.length && el.text().trim().length > 100) {
-        contentHtml = el.html() || '';
-        contentText = el.text().trim();
-        break;
-      }
-    }
-    
-    // Fallback to body content
-    if (!contentHtml || contentText.length < 100) {
-      contentHtml = $('body').html() || '';
-      contentText = $('body').text().trim();
-    }
-    
-    // Sanitize the HTML
-    const sanitizedContent = sanitizeHtml(contentHtml);
-    
-    // Get title
-    const title = $('meta[property="og:title"]').attr('content') 
-      || $('title').text() 
-      || $('h1').first().text() 
-      || '';
-    
-    return {
-      title: title.trim(),
-      content: sanitizedContent,
-      excerpt: contentText.slice(0, 300).trim() + (contentText.length > 300 ? '...' : ''),
-    };
-  } catch (e) {
-    console.warn('[Ingest] Cheerio extraction failed:', e.message);
-    return { title: '', content: '', excerpt: '' };
   }
 }
 

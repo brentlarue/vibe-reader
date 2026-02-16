@@ -1579,6 +1579,50 @@ app.post('/api/feeds/:feedId/items', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/items/:itemId/fetch-content - Fetch full article content from URL (for feeds with excerpts only)
+app.post('/api/items/:itemId/fetch-content', requireAuth, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    const item = isSupabaseConfigured()
+      ? await feedRepo.getFeedItem(itemId)
+      : (await readJsonFile(FEED_ITEMS_FILE)).find(i => i.id === itemId);
+
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    if (!item.url || !item.url.startsWith('http')) {
+      return res.status(400).json({ error: 'Item has no valid URL to fetch content from' });
+    }
+
+    const { fetchArticleContentFromUrl } = await import('./utils/contentFetcher.js');
+    const { content, excerpt } = await fetchArticleContentFromUrl(item.url);
+
+    if (isSupabaseConfigured()) {
+      const updated = await feedRepo.updateFeedItemContent(itemId, content, excerpt);
+      return res.json(updated);
+    }
+
+    await ensureDataDir();
+    const items = await readJsonFile(FEED_ITEMS_FILE);
+    const index = items.findIndex(i => i.id === itemId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    items[index].fullContent = content;
+    if (excerpt) items[index].contentSnippet = excerpt;
+    await writeJsonFile(FEED_ITEMS_FILE, items);
+    res.json(items[index]);
+  } catch (error) {
+    console.error('[Fetch-Content] Error:', error.message);
+    const status = error.message?.includes('private') || error.message?.includes('Invalid') ? 400 : 500;
+    res.status(status).json({
+      error: 'Failed to fetch article content',
+      message: error.message || 'Could not extract content from the article URL',
+    });
+  }
+});
+
 // POST /api/items/:itemId/status - Update item status
 app.post('/api/items/:itemId/status', requireAuth, async (req, res) => {
   try {
