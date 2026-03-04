@@ -150,6 +150,30 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
     }
   };
 
+  const handleImportOpml = async (feeds: any[]) => {
+    try {
+      const result = await storage.bulkAddFeeds(
+        feeds.map(f => ({ url: f.url, displayName: f.title }))
+      );
+
+      if (result.added.length > 0) {
+        onFeedsChange();
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      }
+
+      return {
+        added: result.added.length,
+        duplicates: result.duplicates.length,
+        failed: result.failed.length,
+      };
+    } catch (err) {
+      if (err instanceof Error) {
+        throw err;
+      }
+      throw new Error('Failed to import OPML. Please try again.');
+    }
+  };
+
   const handleRemoveFeed = (feedId: string) => {
     if (confirm('Are you sure you want to remove this feed? Items in Inbox and Archive will be deleted. Saved and Bookmarked items will be kept.')) {
       storage.removeFeed(feedId);
@@ -631,6 +655,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         onClose={() => setIsAddModalOpen(false)}
         onAddFeed={handleAddFeed}
         onAddArticle={handleAddArticle}
+        onImportOpml={handleImportOpml}
       />
     </div>
   );

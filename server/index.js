@@ -73,6 +73,9 @@ const userAiKeysRouter = (await import('./routes/userAiKeys.js')).default;
 // Import feature requests router
 const featureRequestsRouter = (await import('./routes/featureRequests.js')).default;
 
+// Import feeds bulk router (for OPML imports)
+const feedsBulkRouter = (await import('./routes/feeds.js')).default;
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 // Check if we're in production (Render sets NODE_ENV automatically)
@@ -2019,6 +2022,9 @@ app.use('/api/user-ai-keys', requireAuth, userAiKeysRouter);
 
 // Mount feature requests router
 app.use('/api/feature-requests', requireAuth, featureRequestsRouter);
+
+// Mount feeds bulk router (for OPML imports) - must be before inline /api/feeds handlers
+app.use('/api/feeds', requireAuth, feedsBulkRouter);
 
 // Import ingest router (for single article ingestion)
 const ingestRouter = (await import('./routes/ingest.js')).default;

@@ -200,6 +200,38 @@ export const storage = {
   },
 
   /**
+   * Bulk import feeds from OPML
+   */
+  bulkAddFeeds: async (feeds: Array<{ url: string; displayName: string }>): Promise<{
+    added: Feed[];
+    duplicates: string[];
+    failed: Array<{ url: string; error: string }>;
+  }> => {
+    try {
+      const result = await apiRequest<{
+        added: Feed[];
+        duplicates: string[];
+        failed: Array<{ url: string; error: string }>;
+      }>('feeds/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ feeds }),
+      });
+
+      // Update local cache with newly added feeds
+      if (result.added.length > 0) {
+        const cachedFeeds = fallbackToLocalStorage<Feed[]>(FEEDS_KEY, []);
+        cachedFeeds.push(...result.added);
+        saveToLocalStorage(FEEDS_KEY, cachedFeeds);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Failed to bulk import feeds:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Legacy: Save all feeds (for backward compatibility)
    * This now syncs with the server properly
    */
