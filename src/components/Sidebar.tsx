@@ -89,11 +89,6 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
         await storage.upsertFeedItems(newFeed.id, itemsToSave);
         
         window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-
-        // Fetch full content for items with only excerpts (most recent first)
-        storage.fetchContentForItems(itemsToSave).catch((err) => {
-          console.warn('Background content fetch failed:', err);
-        });
       } else if (newItems.length === 0) {
         console.log(`Adding feed ${normalizedUrl}: no items found`);
         // Check if this is a valid feed with no new items, or an invalid feed

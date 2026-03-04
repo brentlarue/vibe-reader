@@ -225,11 +225,6 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
           }));
           await storage.upsertFeedItems(selectedFeedId, itemsToSave);
 
-          // Fetch full content for excerpt-only items (most recent first)
-          storage.fetchContentForItems(itemsToSave).catch((err) => {
-            console.warn('Background content fetch for older items failed:', err);
-          });
-
           // Refresh the items list
           loadItems();
           window.dispatchEvent(new CustomEvent('feedItemsUpdated'));

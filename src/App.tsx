@@ -141,10 +141,6 @@ function AppRoutes() {
             source: feedTitle,
           }));
           await storage.upsertFeedItems(feed.id, itemsToSave);
-
-          storage.fetchContentForItems(itemsToSave).catch((err) => {
-            console.warn('Background content fetch failed:', err);
-          });
         } else {
           console.log(`Refresh feed ${feed.url}: no new items`);
         }
