@@ -248,7 +248,6 @@ export default function ArticleReader() {
     // Reset state when ID changes
     setItem(null);
     setHasAttemptedLoad(false);
-    hasFetchedContentRef.current = null;
 
     const loadArticle = async () => {
       // Decode the ID in case it was URL-encoded in the route
@@ -325,39 +324,10 @@ export default function ArticleReader() {
     loadArticle();
   }, [id]);
 
-  // Fetch full content when item has only excerpt (e.g., steipete.me and similar RSS feeds)
-  const hasFetchedContentRef = useRef<string | null>(null);
-  const [isFetchingContent, setIsFetchingContent] = useState(false);
-  useEffect(() => {
-    if (!item || !item.url || !item.url.startsWith('http')) return;
-    if (hasFetchedContentRef.current === item.id) return;
-
-    const contentLength = (item.fullContent || item.contentSnippet || '').length;
-    // If we have substantial content (>500 chars), assume it's the full article
-    if (contentLength > 500) return;
-
-    let cancelled = false;
-    setIsFetchingContent(true);
-    hasFetchedContentRef.current = item.id;
-
-    storage.fetchContentForItem(item.id)
-      .then((updated) => {
-        if (!cancelled && updated.fullContent) {
-          setItem((prev) => prev?.id === updated.id ? { ...prev, ...updated } : prev);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn('Could not fetch full content:', err.message);
-        }
-        hasFetchedContentRef.current = null; // Allow retry on next visit
-      })
-      .finally(() => {
-        if (!cancelled) setIsFetchingContent(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [item?.id, item?.url, item?.fullContent, item?.contentSnippet]);
+  // NOTE: Auto-fetch of full content is disabled. Some feeds (like Daring Fireball) intentionally
+  // provide brief summaries, and fetching full content from the linked URL changes the reading
+  // experience in a way that contradicts the feed publisher's design intent. Users can click the
+  // article link to read the full content if desired.
 
   // Reload highlights and notes when annotations are updated (e.g., deleted from Notes page)
   useEffect(() => {
@@ -1565,11 +1535,7 @@ export default function ArticleReader() {
             className="prose prose-lg max-w-none" 
             style={{ paddingLeft: '0', paddingRight: '0', lineHeight: '1.75' }}
           >
-            {isFetchingContent ? (
-              <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
-                Fetching full article…
-              </p>
-            ) : !hadContentFromFeed ? (
+            {!hadContentFromFeed ? (
               <p className="italic" style={{ color: 'var(--theme-text-secondary)' }}>
                 No content available for this article. 
                 {item.url && (
