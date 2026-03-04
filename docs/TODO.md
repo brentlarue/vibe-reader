@@ -34,33 +34,33 @@ Master list of all outstanding work and new feature requests. Each item will be 
 
 ## New Feature Requests
 
-### 1. Multi-User Auth System
+### ✓ 1. Multi-User Auth System
 **Make The Signal ready for other users** — sign up, login, forgot password, password reset, login with Google.
 
-**Current state:** Single shared `APP_PASSWORD`, no user accounts, no per-user data isolation.
+**Status:** ✓ COMPLETED
 
 **Scope:** Supabase Auth (built-in email/password + Google OAuth), user accounts, per-user data scoping across all tables (feeds, feed_items, preferences), signup/login/reset UI.
 
-### 2. User-Provided AI Keys
+### ✓ 2. User-Provided AI Keys
 **Users bring their own AI keys** — Anthropic, OpenAI, Google. App owner's keys must never be used.
 
-**Current state:** Server-side env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) used for all requests.
+**Status:** ✓ COMPLETED — Encrypted storage in Supabase, Settings UI for management, per-request key resolution, multi-provider support.
 
 **Scope:** Settings UI for key management, encrypted storage in Supabase, per-request key resolution, validation, remove owner keys from LLM path. Add Google (Gemini) support.
 
 ### 3. Server Migration (Off Render Free Tier)
 **Eliminate the 2-minute cold start.** Budget: free or near-free for ~12 users.
 
-**Current state:** Render free tier with `render.yaml`. Express serves API + SPA.
+**Status:** EVALUATED & ABANDONED — Tested Railway but encountered Node.js version incompatibility (dependencies require Node 20+). Decided to accept Render free tier cold starts.
 
 **To evaluate:** Fly.io free tier, Railway ($5 credit/mo), Oracle Cloud always-free VM, Render paid ($7/mo).
 
-### 4. HN-Style Feature Request Page
-**Feature request board** — all users can post ideas, upvote, comment, see vote counts and who voted.
+### ✓ 4. HN-Style Feature Request Page
+**Feature request board** — all users can post ideas, upvote, see vote counts and who submitted.
 
-**Current state:** Nothing exists.
+**Status:** ✓ COMPLETED — Database tables, API endpoints, React component with voting UI. Moved to Settings menu. Clean divider-based design.
 
-**Scope:** New tables (feature_requests, votes, comments), React pages, sorting by votes/recency. Depends on #1.
+**Scope:** New tables (feature_requests, feature_request_votes), API endpoints (GET list, POST create, POST vote), React pages, sorting by votes/recency. Depends on #1.
 
 ### 5. RSS Feed Discovery Agent
 **AI agent that helps users discover feeds** — conversational, understands preferences, recommends feeds, validates and adds them.
@@ -81,13 +81,17 @@ Master list of all outstanding work and new feature requests. Each item will be 
 ## Execution Order
 
 ```
-#1 Multi-User Auth          ← foundation for everything
-#A Performance Fixes        ← quick wins, independent, good to do early
-#2 User AI Keys             ← depends on #1
-#3 Server Migration         ← independent, can parallel with #2
-#4 Feature Requests         ← depends on #1
-#5 Feed Discovery Agent     ← depends on #2
-#6 Feed Auto-Fix Agent      ← depends on #2
+✓ #1 Multi-User Auth          ← foundation for everything
+#A Performance Fixes          ← quick wins, independent, good to do early
+✓ #2 User AI Keys             ← depends on #1
+~#3 Server Migration          ← evaluated & abandoned (sticking with Render)
+✓ #4 Feature Requests         ← depends on #1
+#5 Feed Discovery Agent       ← depends on #2 (next priority)
+#6 Feed Auto-Fix Agent        ← depends on #2
 ```
 
 Each item gets its own detailed plan before implementation begins.
+
+**Completed:** #1, #2, #4
+**In Progress:** None
+**Next:** #5 Feed Discovery Agent or #A Performance Fixes
