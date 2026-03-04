@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,21 +64,11 @@ const PORT = process.env.PORT || 3001;
 // Check if we're in production (Render sets NODE_ENV automatically)
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
 
-// Authentication constants - must be set in environment variables
-const APP_PASSWORD = process.env.APP_PASSWORD;
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-
-// Validate required environment variables
-if (!APP_PASSWORD) {
-  console.error('ERROR: APP_PASSWORD environment variable is required. Please set it in your .env file.');
-  process.exit(1);
-}
-
-if (SESSION_SECRET === process.env.SESSION_SECRET && !process.env.SESSION_SECRET) {
-  // Only warn if SESSION_SECRET is auto-generated (not set in env)
-  console.warn('WARNING: SESSION_SECRET not set in environment. Using auto-generated secret. This will invalidate sessions on server restart.');
-}
+// Supabase JWKS for JWT verification
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const JWKS = SUPABASE_URL
+  ? createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`))
+  : null;
 
 // Data file path
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -107,48 +97,6 @@ async function ensureDataDir() {
 
 ensureDataDir().catch(console.error);
 
-// Session token helpers
-// Payload structure: { sub: "user", iat: number }
-function signSession(payload, secret) {
-  const payloadJson = JSON.stringify(payload);
-  const hmac = crypto.createHmac('sha256', secret);
-  hmac.update(payloadJson);
-  const signature = hmac.digest('hex');
-  const token = Buffer.from(`${payloadJson}:${signature}`).toString('base64');
-  return token;
-}
-
-function verifySession(token, secret) {
-  try {
-    const decoded = Buffer.from(token, 'base64').toString('utf-8');
-    // Use lastIndexOf to find the separator, since JSON payload contains colons
-    const separatorIndex = decoded.lastIndexOf(':');
-    if (separatorIndex === -1) {
-      throw new Error('Invalid token format');
-    }
-    
-    const payloadJson = decoded.substring(0, separatorIndex);
-    const signature = decoded.substring(separatorIndex + 1);
-    
-    if (!payloadJson || !signature) {
-      throw new Error('Invalid token format');
-    }
-    
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(payloadJson);
-    const expectedSignature = hmac.digest('hex');
-    
-    if (signature !== expectedSignature) {
-      throw new Error('Invalid signature');
-    }
-    
-    return JSON.parse(payloadJson);
-  } catch (error) {
-    console.log('[AUTH] verifySession error:', error.message);
-    throw new Error('Invalid or tampered token');
-  }
-}
-
 // Environment logging middleware - adds env header and logs
 function envMiddleware(req, res, next) {
   const env = getAppEnv();
@@ -157,35 +105,28 @@ function envMiddleware(req, res, next) {
   next();
 }
 
-// Authentication middleware - accepts session cookie OR API key
+// Authentication middleware - accepts Supabase JWT OR API key
 async function requireAuth(req, res, next) {
-  console.log('[AUTH] requireAuth called for:', req.method, req.path);
-  
-  // Check for API key in Authorization header (Bearer token)
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const apiKey = authHeader.substring(7); // Remove "Bearer " prefix
-    
-    // Debug: Log the received key info
-    console.log(`[AUTH] Authorization header received, key length: ${apiKey.length}`);
-    console.log(`[AUTH] Key preview: ${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 8)}`);
-    
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const token = authHeader.substring(7);
+
+  // Distinguish API keys (hex string, no dots) from JWTs (3 dot-separated segments)
+  const isJwt = token.split('.').length === 3;
+
+  if (!isJwt) {
+    // API key authentication
     try {
-      const { getAppEnv } = await import('./db/env.js');
-      const currentEnv = getAppEnv();
-      console.log(`[AUTH] Current backend environment: ${currentEnv}`);
-      
       const apiKeyRepoModule = await import('./db/apiKeyRepository.js');
-      const verification = await apiKeyRepoModule.verifyApiKey(apiKey);
-      
+      const verification = await apiKeyRepoModule.verifyApiKey(token);
+
       if (verification.valid) {
-        console.log('[AUTH] API key verified:', verification.name);
-        req.user = { type: 'api_key', keyId: verification.keyId, name: verification.name };
+        req.user = { type: 'api_key', id: verification.userId, keyId: verification.keyId, name: verification.name };
         return next();
       } else {
-        console.log('[AUTH] Invalid or expired API key');
-        console.log(`[AUTH] Backend is running in: ${currentEnv} environment`);
-        console.log('[AUTH] Make sure your API key was created for the same environment');
         return res.status(401).json({ error: 'Unauthorized' });
       }
     } catch (error) {
@@ -193,22 +134,23 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
   }
-  
-  // Fall back to session cookie authentication
-  console.log('[AUTH] Cookies received:', req.cookies);
-  const token = req.cookies?.session;
-  if (!token) {
-    console.log('[AUTH] No session token or API key found, returning 401');
-    return res.status(401).json({ error: 'Unauthorized' });
+
+  // JWT authentication via Supabase JWKS
+  if (!JWKS) {
+    console.error('[AUTH] JWKS not configured (missing SUPABASE_URL)');
+    return res.status(500).json({ error: 'Auth not configured' });
   }
 
   try {
-    const payload = verifySession(token, SESSION_SECRET);
-    console.log('[AUTH] Session verified successfully:', payload);
-    req.user = { ...payload, type: 'session' };
+    const { payload } = await jwtVerify(token, JWKS);
+    req.user = {
+      type: 'jwt',
+      id: payload.sub,
+      email: payload.email,
+    };
     return next();
   } catch (err) {
-    console.log('[AUTH] Session verification failed:', err.message);
+    console.log('[AUTH] JWT verification failed:', err.message);
     return res.status(401).json({ error: 'Unauthorized' });
   }
 }
@@ -250,133 +192,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(cookieParser());
-
-// Helper function to verify reCAPTCHA token
-async function verifyRecaptcha(token) {
-  if (!RECAPTCHA_SECRET_KEY) {
-    // If no secret key is set, skip validation (for development/testing)
-    console.log('[LOGIN] RECAPTCHA_SECRET_KEY not set, skipping captcha validation');
-    return true;
-  }
-
-  if (!token || typeof token !== 'string') {
-    return false;
-  }
-
-  try {
-    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `secret=${encodeURIComponent(RECAPTCHA_SECRET_KEY)}&response=${encodeURIComponent(token)}`,
-    });
-
-    const data = await response.json();
-    console.log('[LOGIN] reCAPTCHA verification result:', data.success);
-    return data.success === true;
-  } catch (error) {
-    console.error('[LOGIN] Error verifying reCAPTCHA:', error);
-    return false;
-  }
-}
-
-// Public routes (before auth middleware)
-// Login endpoint
-app.post('/api/login', async (req, res) => {
-  console.log('[LOGIN] /api/login called');
-  
-  const { password, rememberMe, captchaToken } = req.body;
-
-  if (!password || typeof password !== 'string') {
-    console.log('[LOGIN] Password missing or not a string');
-    return res.status(400).json({ error: 'Password is required' });
-  }
-
-  // Verify captcha if secret key is configured
-  if (RECAPTCHA_SECRET_KEY) {
-    const captchaValid = await verifyRecaptcha(captchaToken);
-    if (!captchaValid) {
-      console.log('[LOGIN] Invalid or missing captcha token');
-      return res.status(400).json({ error: 'Please complete the captcha verification' });
-    }
-  }
-
-  // Use secure comparison to prevent timing attacks
-  // First check length to avoid timingSafeEqual error on length mismatch
-  if (password.length !== APP_PASSWORD.length) {
-    console.log('[LOGIN] Invalid password attempt');
-    return res.status(401).json({ error: 'Invalid password' });
-  }
-  
-  const passwordMatch = crypto.timingSafeEqual(
-    Buffer.from(password),
-    Buffer.from(APP_PASSWORD)
-  );
-
-  if (!passwordMatch) {
-    console.log('[LOGIN] Invalid password attempt');
-    return res.status(401).json({ error: 'Invalid password' });
-  }
-
-  // Create session payload
-  const payload = {
-    sub: 'user',
-    iat: Date.now()
-  };
-  console.log('[LOGIN] Login successful, creating session');
-
-  // Sign session
-  const token = signSession(payload, SESSION_SECRET);
-
-  // Set cookie
-  const maxAge = rememberMe ? 90 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 90 days or 1 day
-  const cookieOptions = {
-    maxAge,
-    httpOnly: true,
-    path: '/'
-  };
-  
-  // In production (HTTPS), use sameSite: 'none' to support PWA standalone mode
-  // sameSite: 'lax' doesn't work reliably with iOS PWAs in standalone mode
-  if (isProduction) {
-    cookieOptions.secure = true;
-    cookieOptions.sameSite = 'none';
-  } else {
-    // For local dev without HTTPS, use 'lax'
-    cookieOptions.sameSite = 'lax';
-  }
-  
-  res.cookie('session', token, cookieOptions);
-  console.log('[LOGIN] Session cookie set successfully');
-  return res.json({ ok: true });
-});
-
-// Logout endpoint (public, clears cookie)
-app.post('/api/logout', (req, res) => {
-  const cookieOptions = {
-    maxAge: 0,
-    httpOnly: true,
-    path: '/'
-  };
-  
-  // Match the sameSite setting from login
-  if (isProduction) {
-    cookieOptions.secure = true;
-    cookieOptions.sameSite = 'none';
-  } else {
-    cookieOptions.sameSite = 'lax';
-  }
-  
-  res.cookie('session', '', cookieOptions);
-  return res.json({ ok: true });
-});
 
 // Protected /api/me endpoint for checking auth status
 app.get('/api/me', requireAuth, (req, res) => {
-  console.log('[ME] /api/me passed auth, returning ok: true');
-  return res.json({ ok: true });
+  return res.json({ ok: true, user: { id: req.user.id, email: req.user.email } });
 });
 
 // RSS Proxy endpoint (protected) - fetches and parses RSS feeds server-side
@@ -1327,7 +1146,7 @@ async function writeJsonFile(filePath, data) {
 app.get('/api/feeds', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
-      const feeds = await feedRepo.getFeeds();
+      const feeds = await feedRepo.getFeeds(req.user.id);
       return res.json(feeds);
     }
     // Fallback to file
@@ -1351,16 +1170,17 @@ app.post('/api/feeds', requireAuth, async (req, res) => {
 
     if (isSupabaseConfigured()) {
       // Check if feed already exists
-      const existing = await feedRepo.getFeedByUrl(url);
+      const existing = await feedRepo.getFeedByUrl(url, req.user.id);
       if (existing) {
         return res.status(409).json({ error: 'Feed with this URL already exists', feed: existing });
       }
-      
+
       const feed = await feedRepo.createFeed({
         url,
         displayName: displayName || url,
         rssTitle,
         sourceType,
+        userId: req.user.id,
       });
       return res.json(feed);
     }
@@ -1397,10 +1217,10 @@ app.put('/api/feeds/:feedId', requireAuth, async (req, res) => {
       let feed;
       if (displayName !== undefined) {
         // This also updates all items' source field in Supabase
-        feed = await feedRepo.updateFeedName(feedId, displayName);
+        feed = await feedRepo.updateFeedName(feedId, displayName, req.user.id);
       }
       if (rssTitle !== undefined) {
-        feed = await feedRepo.updateFeedRssTitle(feedId, rssTitle);
+        feed = await feedRepo.updateFeedRssTitle(feedId, rssTitle, req.user.id);
       }
       return res.json(feed || { success: true });
     }
@@ -1444,7 +1264,7 @@ app.delete('/api/feeds/:feedId', requireAuth, async (req, res) => {
     const { feedId } = req.params;
 
     if (isSupabaseConfigured()) {
-      await feedRepo.deleteFeed(feedId);
+      await feedRepo.deleteFeed(feedId, req.user.id);
       return res.json({ success: true });
     }
     
@@ -1480,6 +1300,7 @@ app.get('/api/items', requireAuth, async (req, res) => {
         status,
         feedId,
         limit: limit ? parseInt(limit) : undefined,
+        userId: req.user.id,
       });
       return res.json(items);
     }
@@ -1509,13 +1330,13 @@ app.get('/api/items/:itemId', requireAuth, async (req, res) => {
     const { itemId } = req.params;
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.getFeedItem(itemId);
+      const item = await feedRepo.getFeedItem(itemId, req.user.id);
       if (!item) {
         return res.status(404).json({ error: 'Item not found' });
       }
       return res.json(item);
     }
-    
+
     // Fallback to file
     await ensureDataDir();
     const items = await readJsonFile(FEED_ITEMS_FILE);
@@ -1541,7 +1362,7 @@ app.post('/api/feeds/:feedId/items', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const upserted = await feedRepo.upsertFeedItems(feedId, items);
+      const upserted = await feedRepo.upsertFeedItems(feedId, items, req.user.id);
       return res.json(upserted);
     }
     
@@ -1585,7 +1406,7 @@ app.post('/api/items/:itemId/fetch-content', requireAuth, async (req, res) => {
     const { itemId } = req.params;
 
     const item = isSupabaseConfigured()
-      ? await feedRepo.getFeedItem(itemId)
+      ? await feedRepo.getFeedItem(itemId, req.user.id)
       : (await readJsonFile(FEED_ITEMS_FILE)).find(i => i.id === itemId);
 
     if (!item) {
@@ -1599,7 +1420,7 @@ app.post('/api/items/:itemId/fetch-content', requireAuth, async (req, res) => {
     const { content, excerpt } = await fetchArticleContentFromUrl(item.url);
 
     if (isSupabaseConfigured()) {
-      const updated = await feedRepo.updateFeedItemContent(itemId, content, excerpt);
+      const updated = await feedRepo.updateFeedItemContent(itemId, content, excerpt, req.user.id);
       return res.json(updated);
     }
 
@@ -1635,7 +1456,7 @@ app.post('/api/items/:itemId/status', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.updateFeedItemStatus(itemId, status);
+      const item = await feedRepo.updateFeedItemStatus(itemId, status, req.user.id);
       return res.json(item);
     }
     
@@ -1667,7 +1488,7 @@ app.post('/api/items/:itemId/reading-order', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.updateFeedItemReadingOrder(itemId, readingOrder);
+      const item = await feedRepo.updateFeedItemReadingOrder(itemId, readingOrder, req.user.id);
       return res.json(item);
     }
 
@@ -1698,7 +1519,7 @@ app.post('/api/items/:itemId/summary', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.updateFeedItemSummary(itemId, summary);
+      const item = await feedRepo.updateFeedItemSummary(itemId, summary, req.user.id);
       return res.json(item);
     }
     
@@ -1734,7 +1555,7 @@ app.post('/api/items/:itemId/ai-feature', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.updateFeedItemAIFeature(itemId, featureType, content);
+      const item = await feedRepo.updateFeedItemAIFeature(itemId, featureType, content, req.user.id);
       return res.json(item);
     }
     
@@ -1773,7 +1594,7 @@ app.post('/api/items/:itemId/paywall', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.updateFeedItemPaywallStatus(itemId, paywallStatus);
+      const item = await feedRepo.updateFeedItemPaywallStatus(itemId, paywallStatus, req.user.id);
       return res.json(item);
     }
     
@@ -1804,7 +1625,7 @@ app.post('/api/items/:itemId/reassociate', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const item = await feedRepo.reassociateFeedItem(itemId, feedId, source);
+      const item = await feedRepo.reassociateFeedItem(itemId, feedId, source, req.user.id);
       return res.json(item);
     }
     
@@ -1831,7 +1652,7 @@ app.delete('/api/items/:itemId', requireAuth, async (req, res) => {
     const { itemId } = req.params;
 
     if (isSupabaseConfigured()) {
-      await feedRepo.deleteFeedItem(itemId);
+      await feedRepo.deleteFeedItem(itemId, req.user.id);
       return res.json({ success: true });
     }
     
@@ -1857,7 +1678,7 @@ app.delete('/api/items', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const count = await feedRepo.deleteFeedItemsByStatus(status);
+      const count = await feedRepo.deleteFeedItemsByStatus(status, req.user.id);
       return res.json({ success: true, count });
     }
     
@@ -1882,7 +1703,7 @@ app.delete('/api/items', requireAuth, async (req, res) => {
 app.get('/api/preferences', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
-      const prefs = await feedRepo.getPreferences();
+      const prefs = await feedRepo.getPreferences(req.user.id);
       console.log('[API] Retrieved preferences:', Object.keys(prefs));
       return res.json(prefs);
     }
@@ -1907,7 +1728,7 @@ app.post('/api/preferences', requireAuth, async (req, res) => {
     console.log('[API] Updating preferences:', Object.keys(updates));
 
     if (isSupabaseConfigured()) {
-      await feedRepo.updatePreferences(updates);
+      await feedRepo.updatePreferences(updates, req.user.id);
       console.log('[API] Preferences updated successfully');
       return res.json({ success: true });
     }
@@ -1939,7 +1760,7 @@ app.post('/api/preferences', requireAuth, async (req, res) => {
 app.get('/api/data/feeds', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
-      const feeds = await feedRepo.getFeeds();
+      const feeds = await feedRepo.getFeeds(req.user.id);
       return res.json(feeds);
     }
     await ensureDataDir();
@@ -1961,16 +1782,17 @@ app.post('/api/data/feeds', requireAuth, async (req, res) => {
     if (isSupabaseConfigured()) {
       // For each feed, upsert it
       for (const feed of feeds) {
-        const existing = await feedRepo.getFeedByUrl(feed.url);
+        const existing = await feedRepo.getFeedByUrl(feed.url, req.user.id);
         if (!existing) {
           await feedRepo.createFeed({
             url: feed.url,
             displayName: feed.name,
             rssTitle: feed.rssTitle,
             sourceType: feed.sourceType || 'rss',
+            userId: req.user.id,
           });
         } else if (feed.name !== existing.name) {
-          await feedRepo.updateFeedName(existing.id, feed.name);
+          await feedRepo.updateFeedName(existing.id, feed.name, req.user.id);
         }
       }
       return res.json({ success: true });
@@ -1989,7 +1811,7 @@ app.post('/api/data/feeds', requireAuth, async (req, res) => {
 app.get('/api/data/feed-items', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
-      const items = await feedRepo.getFeedItems();
+      const items = await feedRepo.getFeedItems({ userId: req.user.id });
       return res.json(items);
     }
     await ensureDataDir();
@@ -2011,7 +1833,7 @@ app.post('/api/data/feed-items', requireAuth, async (req, res) => {
       const itemsByFeed = {};
       for (const item of items) {
         // Try to find the feed by matching source/rssTitle
-        const feeds = await feedRepo.getFeeds();
+        const feeds = await feedRepo.getFeeds(req.user.id);
         let feed = feeds.find(f => f.rssTitle === item.source || f.name === item.source);
         
         if (feed) {
@@ -2024,7 +1846,7 @@ app.post('/api/data/feed-items', requireAuth, async (req, res) => {
       
       // Upsert items for each feed
       for (const [feedId, feedItems] of Object.entries(itemsByFeed)) {
-        await feedRepo.upsertFeedItems(feedId, feedItems);
+        await feedRepo.upsertFeedItems(feedId, feedItems, req.user.id);
       }
       
       return res.json({ success: true });
@@ -2043,7 +1865,7 @@ app.post('/api/data/feed-items', requireAuth, async (req, res) => {
 app.get('/api/data/preferences', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
-      const prefs = await feedRepo.getPreferences();
+      const prefs = await feedRepo.getPreferences(req.user.id);
       return res.json(prefs);
     }
     await ensureDataDir();
@@ -2064,10 +1886,10 @@ app.post('/api/data/preferences', requireAuth, async (req, res) => {
     const updates = req.body;
     
     if (isSupabaseConfigured()) {
-      await feedRepo.updatePreferences(updates);
+      await feedRepo.updatePreferences(updates, req.user.id);
       return res.json({ success: true });
     }
-    
+
     await ensureDataDir();
     const currentPrefs = existsSync(PREFERENCES_FILE) ? await readJsonFile(PREFERENCES_FILE) : {};
     const updatedPrefs = { ...currentPrefs, ...updates };
@@ -2097,7 +1919,7 @@ app.post('/api/annotations', requireAuth, async (req, res) => {
     }
 
     if (isSupabaseConfigured()) {
-      const annotation = await feedRepo.createAnnotation(feedItemId, feedId, type, content);
+      const annotation = await feedRepo.createAnnotation(feedItemId, feedId, type, content, req.user.id);
       return res.json(annotation);
     }
 
@@ -2112,7 +1934,7 @@ app.post('/api/annotations', requireAuth, async (req, res) => {
 app.get('/api/annotations', requireAuth, async (req, res) => {
   try {
     if (isSupabaseConfigured()) {
-      const annotations = await feedRepo.getAnnotations();
+      const annotations = await feedRepo.getAnnotations(req.user.id);
       return res.json(annotations);
     }
 
@@ -2129,7 +1951,7 @@ app.get('/api/annotations/article/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
 
     if (isSupabaseConfigured()) {
-      const annotations = await feedRepo.getAnnotationsForArticle(id);
+      const annotations = await feedRepo.getAnnotationsForArticle(id, req.user.id);
       return res.json(annotations);
     }
 
@@ -2147,7 +1969,7 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
     console.log('[API] Deleting annotation:', id);
 
     if (isSupabaseConfigured()) {
-      await feedRepo.deleteAnnotation(id);
+      await feedRepo.deleteAnnotation(id, req.user.id);
       console.log('[API] Annotation deleted successfully:', id);
       return res.json({ success: true });
     }
@@ -2174,14 +1996,14 @@ app.use('/api/debug', requireAuth, llmRouter);
 // Import ingest router (for single article ingestion)
 const ingestRouter = (await import('./routes/ingest.js')).default;
 
-// Import brief router (for daily brief functionality)
-const briefRouter = (await import('./routes/brief.js')).default;
+// PARKED: Daily Brief feature
+// const briefRouter = (await import('./routes/brief.js')).default;
 
 // Mount ingest router with auth middleware
 app.use('/api/ingest', requireAuth, ingestRouter);
 
-// Mount brief router with auth middleware
-app.use('/api/brief', requireAuth, briefRouter);
+// PARKED: Daily Brief feature
+// app.use('/api/brief', requireAuth, briefRouter);
 
 // ============================================================================
 // API KEY MANAGEMENT
@@ -2210,7 +2032,7 @@ app.post('/api/keys', requireAuth, async (req, res) => {
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
     }
 
-    const result = await apiKeyRepo.createApiKey(name.trim(), expiresAt);
+    const result = await apiKeyRepo.createApiKey(name.trim(), req.user.id, expiresAt);
 
     // Return the key (only shown once!)
     return res.json({
@@ -2238,7 +2060,7 @@ app.get('/api/keys', requireAuth, async (req, res) => {
       return res.status(503).json({ error: 'Supabase not configured' });
     }
 
-    const keys = await apiKeyRepo.listApiKeys();
+    const keys = await apiKeyRepo.listApiKeys(req.user.id);
     return res.json(keys);
   } catch (error) {
     console.error('[API Keys] Error listing keys:', error);
@@ -2257,7 +2079,7 @@ app.delete('/api/keys/:keyId', requireAuth, async (req, res) => {
     }
 
     const { keyId } = req.params;
-    await apiKeyRepo.deleteApiKey(keyId);
+    await apiKeyRepo.deleteApiKey(keyId, req.user.id);
     return res.json({ success: true });
   } catch (error) {
     console.error('[API Keys] Error deleting key:', error);
@@ -2282,9 +2104,13 @@ app.get('/health', async (req, res) => {
   // Test Supabase connection if configured
   if (isSupabaseConfigured()) {
     try {
-      const feeds = await feedRepo.getFeeds();
-      health.database.connected = true;
-      health.database.feedCount = feeds.length;
+      // Simple connectivity check — count feeds without user scoping
+      const { supabase } = await import('./db/supabaseClient.js');
+      const { count, error } = await supabase
+        .from('feeds')
+        .select('id', { count: 'exact', head: true });
+      health.database.connected = !error;
+      if (error) health.database.error = error.message;
     } catch (error) {
       health.database.connected = false;
       health.database.error = error.message;
@@ -2321,8 +2147,7 @@ app.listen(PORT, async () => {
     console.log('Production mode: Serving static files from dist/');
   }
   
-  // Initialize custom feeds on server startup
-  await initializeCustomFeeds();
+  // Custom feed initialization is now per-user (triggered on first refresh)
 });
 
 /**

@@ -2,15 +2,18 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import AppContent from './components/AppContent';
 import LoginPage from './components/LoginPage';
+import AuthCallback from './components/AuthCallback';
+import ResetPassword from './components/ResetPassword';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Feed } from './types';
 import { storage } from './utils/storage';
 import { preferences } from './utils/preferences';
 
-function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = checking
+function AppRoutes() {
+  const { session, loading } = useAuth();
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
-  
+
   // Sidebar collapse state - synced across devices
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -24,43 +27,12 @@ function App() {
     document.title = isDev ? 'The Signal (DEV)' : 'The Signal';
   }, []);
 
-  // Check authentication status on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      // Don't check auth if we're on the login page
-      if (window.location.pathname === '/login') {
-        setIsAuthenticated(false);
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/me', {
-          credentials: 'include',
-        });
-        
-        setIsAuthenticated(res.ok);
-        if (!res.ok) {
-          // Only redirect if we're not already on login page
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
-        }
-      } catch (error) {
-        console.error('[APP] Auth check error:', error);
-        setIsAuthenticated(false);
-        // Don't redirect if we're already on login page
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-      }
-    };
-    checkAuth();
-  }, []);
+  const isAuthenticated = !!session;
 
   // Load sidebar state from server on mount (only if authenticated)
   useEffect(() => {
     if (!isAuthenticated) return;
-    
+
     const loadSidebarState = async () => {
       try {
         const saved = await preferences.getSidebarCollapsed();
@@ -139,7 +111,7 @@ function App() {
   const handleRefreshAllFeeds = async (clearFirst: boolean = false) => {
     const allFeeds = await storage.getFeeds();
     const rssFeeds = allFeeds.filter(feed => feed.sourceType === 'rss');
-    
+
     if (rssFeeds.length === 0) {
       return;
     }
@@ -147,32 +119,29 @@ function App() {
     // Clear all items if requested
     if (clearFirst) {
       await storage.clearAllFeedItems();
-      console.log('✓ Cleared all feed items');
+      console.log('Cleared all feed items');
     }
 
     const existingItems = await storage.getFeedItems();
 
     // Fetch all RSS feeds in parallel
     const { fetchRss } = await import('./utils/rss');
-    
+
     const fetchPromises = rssFeeds.map(async (feed) => {
       try {
         console.log('Refreshing feed:', feed.url);
-        
-        // fetchRss now returns { items, feedTitle } with deduplication, sorting, and limiting
-        // Pass feed.rssTitle so it can match existing items for this specific feed
+
         const { items: feedItems, feedTitle } = await fetchRss(feed.url, existingItems, feed.rssTitle);
 
         if (feedItems.length > 0) {
           console.log(`Refresh feed ${feed.url}: got ${feedItems.length} new items after deduplication`);
-          
+
           const itemsToSave = feedItems.map(item => ({
             ...item,
             source: feedTitle,
           }));
           await storage.upsertFeedItems(feed.id, itemsToSave);
 
-          // Fetch full content for items with only excerpts (most recent first)
           storage.fetchContentForItems(itemsToSave).catch((err) => {
             console.warn('Background content fetch failed:', err);
           });
@@ -180,8 +149,6 @@ function App() {
           console.log(`Refresh feed ${feed.url}: no new items`);
         }
 
-        // Always update rssTitle to ensure it matches the current RSS feed title
-        // This ensures items can be correctly matched even if feed was renamed or RSS title changed
         if (!feed.rssTitle || feed.rssTitle !== feedTitle) {
           try {
             const { apiFetch } = await import('./utils/apiFetch');
@@ -196,28 +163,21 @@ function App() {
           }
         }
 
-        // Reassociate orphaned items: Find items that should belong to this feed but don't match
-        // This fixes items that were created before rssTitle was set correctly or feed URL changed
         try {
           const allItemsAfterRefresh = await storage.getFeedItems();
           const orphanedItems = allItemsAfterRefresh.filter(item => {
-            // Skip items that already belong to this feed
             if (item.feedId === feed.id) return false;
             if (item.source === feedTitle || item.source === feed.rssTitle) return false;
-            
-            // Check if item should belong to this feed by URL pattern
+
             const feedHostname = feed.url.toLowerCase();
             const itemUrl = item.url?.toLowerCase() || '';
-            
-            // For proxy feeds like brianvia.blog/paul-graham, items come from paulgraham.com
+
             if (feedHostname.includes('brianvia.blog') && feedHostname.includes('paul-graham')) {
               if (itemUrl.includes('paulgraham.com')) {
                 return true;
               }
             }
-            
-            // For other feeds, check if item URL matches feed patterns
-            // This is a fallback - if new items were fetched and match, old items from same domain likely do too
+
             if (feedItems.length > 0) {
               const newItemUrls = feedItems.map(i => {
                 try {
@@ -228,8 +188,8 @@ function App() {
               });
               try {
                 const itemHostname = new URL(item.url).hostname.toLowerCase();
-                if (newItemUrls.includes(itemHostname) && 
-                    item.source && 
+                if (newItemUrls.includes(itemHostname) &&
+                    item.source &&
                     (item.source.includes('Paul Graham') || item.source.includes('paul graham'))) {
                   return true;
                 }
@@ -237,29 +197,25 @@ function App() {
                 // Continue
               }
             }
-            
+
             return false;
           });
 
-          // Update orphaned items to belong to this feed
           if (orphanedItems.length > 0) {
             console.log(`Reassociating ${orphanedItems.length} orphaned items for feed ${feed.name}`);
-            
+
             for (const item of orphanedItems) {
               try {
-                // Update item's source and feed_id
                 await storage.reassociateItem(item.id, feed.id, feedTitle);
               } catch (error) {
                 console.error(`Error reassociating item ${item.id}:`, error);
               }
             }
-            
-            // Refresh items after reassociation
+
             window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
           }
         } catch (reassocError) {
           console.error('Error during item reassociation:', reassocError);
-          // Don't fail the refresh if reassociation fails
         }
       } catch (error) {
         console.error(`Error fetching feed ${feed.url}:`, error);
@@ -267,31 +223,25 @@ function App() {
     });
 
     await Promise.all(fetchPromises);
-    
-    // Store last refresh time on server
+
     try {
       const now = new Date();
       const timestamp = now.toISOString();
-      console.log('Saving last refresh time:', timestamp);
       await preferences.setLastFeedRefresh(timestamp);
-      console.log('Successfully saved last refresh time');
-      
-      // Dispatch event specifically for refresh time update (after save completes)
       window.dispatchEvent(new CustomEvent('lastRefreshTimeUpdated'));
     } catch (error) {
       console.error('Failed to save last refresh time:', error);
     }
-    
-    // Trigger a refresh of FeedList components
+
     window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
   };
 
   // Show loading state while checking auth
-  if (isAuthenticated === null) {
+  if (loading) {
     return (
-      <div 
+      <div
         className="min-h-screen flex items-center justify-center"
-        style={{ 
+        style={{
           backgroundColor: 'var(--theme-bg)',
           color: 'var(--theme-text)'
         }}
@@ -304,31 +254,41 @@ function App() {
   }
 
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/*"
-          element={
-            isAuthenticated ? (
-              <AppContent
-                feeds={feeds}
-                selectedFeedId={selectedFeedId}
-                setSelectedFeedId={setSelectedFeedId}
-                handleFeedsChange={handleFeedsChange}
-                handleRefreshAllFeeds={handleRefreshAllFeeds}
-                isSidebarCollapsed={isSidebarCollapsed}
-                toggleSidebar={toggleSidebar}
-                isMobileDrawerOpen={isMobileDrawerOpen}
-                setIsMobileDrawerOpen={setIsMobileDrawerOpen}
-              />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-          </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route
+        path="/*"
+        element={
+          isAuthenticated ? (
+            <AppContent
+              feeds={feeds}
+              selectedFeedId={selectedFeedId}
+              setSelectedFeedId={setSelectedFeedId}
+              handleFeedsChange={handleFeedsChange}
+              handleRefreshAllFeeds={handleRefreshAllFeeds}
+              isSidebarCollapsed={isSidebarCollapsed}
+              toggleSidebar={toggleSidebar}
+              isMobileDrawerOpen={isMobileDrawerOpen}
+              setIsMobileDrawerOpen={setIsMobileDrawerOpen}
+            />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

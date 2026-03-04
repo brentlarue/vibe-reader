@@ -19,7 +19,7 @@ import { getAppEnv } from './env.js';
  * Get all feeds
  * @returns {Promise<Array>} List of feeds
  */
-export async function getFeeds() {
+export async function getFeeds(userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -30,6 +30,7 @@ export async function getFeeds() {
     .from('feeds')
     .select('*')
     .eq('env', env)
+    .eq('user_id', userId)
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -52,7 +53,7 @@ export async function getFeeds() {
  * @param {string} feedId - Feed UUID
  * @returns {Promise<Object|null>} Feed object or null
  */
-export async function getFeed(feedId) {
+export async function getFeed(feedId, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -64,6 +65,7 @@ export async function getFeed(feedId) {
     .select('*')
     .eq('id', feedId)
     .eq('env', env)
+    .eq('user_id', userId)
     .single();
 
   if (error) {
@@ -88,7 +90,7 @@ export async function getFeed(feedId) {
  * @param {string} url - Feed URL
  * @returns {Promise<Object|null>} Feed object or null
  */
-export async function getFeedByUrl(url) {
+export async function getFeedByUrl(url, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -100,6 +102,7 @@ export async function getFeedByUrl(url) {
     .select('*')
     .eq('url', url)
     .eq('env', env)
+    .eq('user_id', userId)
     .single();
 
   if (error) {
@@ -128,7 +131,7 @@ export async function getFeedByUrl(url) {
  * @param {string} [feed.sourceType='rss'] - Source type
  * @returns {Promise<Object>} Created feed
  */
-export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss' }) {
+export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss', userId }) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -143,6 +146,7 @@ export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss
       rss_title: rssTitle || null,
       source_type: sourceType,
       env,
+      user_id: userId,
     })
     .select()
     .single();
@@ -167,7 +171,7 @@ export async function createFeed({ url, displayName, rssTitle, sourceType = 'rss
  * @param {string} displayName - New display name
  * @returns {Promise<Object>} Updated feed
  */
-export async function updateFeedName(feedId, displayName) {
+export async function updateFeedName(feedId, displayName, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -181,6 +185,7 @@ export async function updateFeedName(feedId, displayName) {
     .select('rss_title')
     .eq('id', feedId)
     .eq('env', env)
+    .eq('user_id', userId)
     .single();
 
   if (fetchError) {
@@ -194,6 +199,7 @@ export async function updateFeedName(feedId, displayName) {
     .update({ display_name: displayName })
     .eq('id', feedId)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -209,7 +215,8 @@ export async function updateFeedName(feedId, displayName) {
       .from('feed_items')
       .update({ source: currentFeed.rss_title })
       .eq('feed_id', feedId)
-      .eq('env', env);
+      .eq('env', env)
+      .eq('user_id', userId);
 
     if (itemsError) {
       console.error('[DB] Error updating feed items source:', itemsError);
@@ -232,7 +239,7 @@ export async function updateFeedName(feedId, displayName) {
  * @param {string} rssTitle - RSS title from feed
  * @returns {Promise<Object>} Updated feed
  */
-export async function updateFeedRssTitle(feedId, rssTitle) {
+export async function updateFeedRssTitle(feedId, rssTitle, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -245,6 +252,7 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
     .update({ rss_title: rssTitle })
     .eq('id', feedId)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -259,7 +267,8 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
     .from('feed_items')
     .update({ source: rssTitle })
     .eq('feed_id', feedId)
-    .eq('env', env);
+    .eq('env', env)
+    .eq('user_id', userId);
 
   if (itemsError) {
     console.error('[DB] Error updating feed items source with rssTitle:', itemsError);
@@ -280,7 +289,7 @@ export async function updateFeedRssTitle(feedId, rssTitle) {
  * @param {string} feedId - Feed UUID
  * @returns {Promise<void>}
  */
-export async function deleteFeed(feedId) {
+export async function deleteFeed(feedId, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -293,7 +302,8 @@ export async function deleteFeed(feedId) {
     .from('feeds')
     .delete()
     .eq('id', feedId)
-    .eq('env', env);
+    .eq('env', env)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('[DB] Error deleting feed:', error);
@@ -313,7 +323,7 @@ export async function deleteFeed(feedId) {
  * @param {number} [options.limit] - Limit results
  * @returns {Promise<Array>} List of feed items
  */
-export async function getFeedItems({ status, feedId, limit } = {}) {
+export async function getFeedItems({ status, feedId, limit, userId } = {}) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -324,6 +334,7 @@ export async function getFeedItems({ status, feedId, limit } = {}) {
     .from('feed_items')
     .select('*')
     .eq('env', env)
+    .eq('user_id', userId)
     .order('published_at', { ascending: false, nullsFirst: false });
 
   if (status) {
@@ -354,7 +365,7 @@ export async function getFeedItems({ status, feedId, limit } = {}) {
  * @param {string} itemId - Item UUID or external_id or URL
  * @returns {Promise<Object|null>} Feed item or null
  */
-export async function getFeedItem(itemId) {
+export async function getFeedItem(itemId, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -367,6 +378,7 @@ export async function getFeedItem(itemId) {
     .select('*')
     .eq('id', itemId)
     .eq('env', env)
+    .eq('user_id', userId)
     .single();
 
   // If not found and itemId looks like a URL or non-UUID, try external_id
@@ -379,20 +391,22 @@ export async function getFeedItem(itemId) {
         .select('*')
         .eq('external_id', itemId)
         .eq('env', env)
+        .eq('user_id', userId)
         .single();
-      
+
       if (!result.error) {
         return transformFeedItem(result.data);
       }
-      
+
       // Try by URL
       const urlResult = await supabase
         .from('feed_items')
         .select('*')
         .eq('url', itemId)
         .eq('env', env)
+        .eq('user_id', userId)
         .single();
-      
+
       if (!urlResult.error) {
         return transformFeedItem(urlResult.data);
       }
@@ -415,7 +429,7 @@ export async function getFeedItem(itemId) {
  * @param {Array} items - Array of feed items
  * @returns {Promise<Array>} Upserted items
  */
-export async function upsertFeedItems(feedId, items) {
+export async function upsertFeedItems(feedId, items, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -433,6 +447,7 @@ export async function upsertFeedItems(feedId, items) {
     .select('id')
     .eq('id', feedId)
     .eq('env', env)
+    .eq('user_id', userId)
     .single();
 
   if (feedCheckError || !feedCheck) {
@@ -448,6 +463,7 @@ export async function upsertFeedItems(feedId, items) {
     .select('url, status')
     .eq('feed_id', feedId)
     .eq('env', env)
+    .eq('user_id', userId)
     .in('url', urls);
 
   if (existingError) {
@@ -482,6 +498,7 @@ export async function upsertFeedItems(feedId, items) {
       source: item.source || null,
       source_type: item.sourceType || 'rss',
       env,
+      user_id: userId,
     };
   });
 
@@ -518,7 +535,7 @@ export async function upsertFeedItems(feedId, items) {
  * @param {string} status - New status ('inbox' | 'saved' | 'bookmarked' | 'archived')
  * @returns {Promise<Object>} Updated item
  */
-export async function updateFeedItemStatus(itemId, status) {
+export async function updateFeedItemStatus(itemId, status, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -529,7 +546,7 @@ export async function updateFeedItemStatus(itemId, status) {
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -542,6 +559,7 @@ export async function updateFeedItemStatus(itemId, status) {
     .update({ status })
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -560,7 +578,7 @@ export async function updateFeedItemStatus(itemId, status) {
  * @param {string|null} readingOrder - New reading order or null to clear
  * @returns {Promise<Object>} Updated item
  */
-export async function updateFeedItemReadingOrder(itemId, readingOrder) {
+export async function updateFeedItemReadingOrder(itemId, readingOrder, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -571,7 +589,7 @@ export async function updateFeedItemReadingOrder(itemId, readingOrder) {
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -583,6 +601,7 @@ export async function updateFeedItemReadingOrder(itemId, readingOrder) {
     .update({ reading_order: readingOrder })
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -600,13 +619,13 @@ export async function updateFeedItemReadingOrder(itemId, readingOrder) {
  * @param {string} summary - AI summary text
  * @returns {Promise<Object>} Updated item
  */
-export async function updateFeedItemSummary(itemId, summary) {
+export async function updateFeedItemSummary(itemId, summary, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -619,6 +638,7 @@ export async function updateFeedItemSummary(itemId, summary) {
     .update({ ai_summary: summary })
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -637,7 +657,7 @@ export async function updateFeedItemSummary(itemId, summary) {
  * @param {string} content - AI feature content
  * @returns {Promise<Object>} Updated item
  */
-export async function updateFeedItemAIFeature(itemId, featureType, content) {
+export async function updateFeedItemAIFeature(itemId, featureType, content, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -655,7 +675,7 @@ export async function updateFeedItemAIFeature(itemId, featureType, content) {
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -668,6 +688,7 @@ export async function updateFeedItemAIFeature(itemId, featureType, content) {
     .update({ [column]: content })
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -685,7 +706,7 @@ export async function updateFeedItemAIFeature(itemId, featureType, content) {
  * @param {string} paywallStatus - Paywall status ('unknown' | 'free' | 'paid')
  * @returns {Promise<Object>} Updated item
  */
-export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
+export async function updateFeedItemPaywallStatus(itemId, paywallStatus, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -696,7 +717,7 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -709,6 +730,7 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
     .update({ paywall_status: paywallStatus })
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -727,13 +749,13 @@ export async function updateFeedItemPaywallStatus(itemId, paywallStatus) {
  * @param {string} source - New source value (rssTitle)
  * @returns {Promise<Object>} Updated item
  */
-export async function reassociateFeedItem(itemId, feedId, source) {
+export async function reassociateFeedItem(itemId, feedId, source, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -743,12 +765,13 @@ export async function reassociateFeedItem(itemId, feedId, source) {
   // Update must be scoped by both id and env to prevent cross-env modifications
   const { data, error } = await supabase
     .from('feed_items')
-    .update({ 
+    .update({
       feed_id: feedId,
       source: source
     })
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -767,12 +790,12 @@ export async function reassociateFeedItem(itemId, feedId, source) {
  * @param {string} [contentSnippet] - Optional excerpt/snippet
  * @returns {Promise<Object>} Updated item
  */
-export async function updateFeedItemContent(itemId, fullContent, contentSnippet) {
+export async function updateFeedItemContent(itemId, fullContent, contentSnippet, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
 
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -788,6 +811,7 @@ export async function updateFeedItemContent(itemId, fullContent, contentSnippet)
     .update(updates)
     .eq('id', item.id)
     .eq('env', env)
+    .eq('user_id', userId)
     .select()
     .single();
 
@@ -804,13 +828,13 @@ export async function updateFeedItemContent(itemId, fullContent, contentSnippet)
  * @param {string} itemId - Item UUID or external_id or URL
  * @returns {Promise<void>}
  */
-export async function deleteFeedItem(itemId) {
+export async function deleteFeedItem(itemId, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
 
   // First, find the item to get its UUID (already env-scoped)
-  const item = await getFeedItem(itemId);
+  const item = await getFeedItem(itemId, userId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -822,7 +846,8 @@ export async function deleteFeedItem(itemId) {
     .from('feed_items')
     .delete()
     .eq('id', item.id)
-    .eq('env', env);
+    .eq('env', env)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('[DB] Error deleting feed item:', error);
@@ -835,7 +860,7 @@ export async function deleteFeedItem(itemId) {
  * @param {string} status - Status to delete
  * @returns {Promise<number>} Number of deleted items
  */
-export async function deleteFeedItemsByStatus(status) {
+export async function deleteFeedItemsByStatus(status, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -848,6 +873,7 @@ export async function deleteFeedItemsByStatus(status) {
     .delete()
     .eq('status', status)
     .eq('env', env)
+    .eq('user_id', userId)
     .select();
 
   if (error) {
@@ -866,7 +892,7 @@ export async function deleteFeedItemsByStatus(status) {
  * Get all preferences
  * @returns {Promise<Object>} Preferences object
  */
-export async function getPreferences() {
+export async function getPreferences(userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -876,7 +902,8 @@ export async function getPreferences() {
   const { data, error } = await supabase
     .from('preferences')
     .select('key, value')
-    .eq('env', env);
+    .eq('env', env)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('[DB] Error fetching preferences:', error);
@@ -908,7 +935,7 @@ export async function getPreferences() {
  * @param {*} value - Preference value (will be stored as JSONB)
  * @returns {Promise<void>}
  */
-export async function setPreference(key, value) {
+export async function setPreference(key, value, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -918,7 +945,7 @@ export async function setPreference(key, value) {
   // Try using column names for onConflict (Supabase prefers this)
   const { error } = await supabase
     .from('preferences')
-    .upsert({ key, value, env }, { onConflict: 'key,env' });
+    .upsert({ key, value, env, user_id: userId }, { onConflict: 'key,env' });
 
   if (error) {
     console.error('[DB] Error setting preference:', error);
@@ -931,7 +958,7 @@ export async function setPreference(key, value) {
  * @param {Object} updates - Object of key-value pairs to update
  * @returns {Promise<void>}
  */
-export async function updatePreferences(updates) {
+export async function updatePreferences(updates, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -942,6 +969,7 @@ export async function updatePreferences(updates) {
     key,
     value, // Supabase JSONB will handle the value correctly
     env,
+    user_id: userId,
   }));
 
   console.log(`[DB] Updating preferences for env=${env}:`, Object.keys(updates));
@@ -1001,7 +1029,7 @@ function transformFeedItem(dbItem) {
  * This feed is used to store individually added articles that don't belong to an RSS feed.
  * @returns {Promise<Object>} The Links pseudo-feed
  */
-export async function getOrCreateLinksFeed() {
+export async function getOrCreateLinksFeed(userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -1015,6 +1043,7 @@ export async function getOrCreateLinksFeed() {
     .select('*')
     .eq('url', LINKS_FEED_URL)
     .eq('env', env)
+    .eq('user_id', userId)
     .single();
 
   if (existingFeed) {
@@ -1037,6 +1066,7 @@ export async function getOrCreateLinksFeed() {
         rss_title: 'Links',
         source_type: 'link',
         env,
+        user_id: userId,
       })
       .select()
       .single();
@@ -1050,6 +1080,7 @@ export async function getOrCreateLinksFeed() {
           .select('*')
           .eq('url', LINKS_FEED_URL)
           .eq('env', env)
+          .eq('user_id', userId)
           .single();
 
         if (raceFeed) {
@@ -1088,7 +1119,7 @@ export async function getOrCreateLinksFeed() {
  * @param {string} url - Item URL
  * @returns {Promise<boolean>}
  */
-export async function feedItemExistsByUrl(feedId, url) {
+export async function feedItemExistsByUrl(feedId, url, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -1100,7 +1131,8 @@ export async function feedItemExistsByUrl(feedId, url) {
     .select('id', { count: 'exact', head: true })
     .eq('feed_id', feedId)
     .eq('url', url)
-    .eq('env', env);
+    .eq('env', env)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('[DB] Error checking feed item existence:', error);
@@ -1122,7 +1154,7 @@ export async function feedItemExistsByUrl(feedId, url) {
  * @param {string} content - Highlighted text or note body
  * @returns {Promise<Object>} Created annotation
  */
-export async function createAnnotation(feedItemId, feedId, type, content) {
+export async function createAnnotation(feedItemId, feedId, type, content, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -1137,6 +1169,7 @@ export async function createAnnotation(feedItemId, feedId, type, content) {
       type,
       content,
       env,
+      user_id: userId,
     })
     .select()
     .single();
@@ -1153,7 +1186,7 @@ export async function createAnnotation(feedItemId, feedId, type, content) {
  * Get all annotations for the current environment
  * @returns {Promise<Array>} List of annotations with article/feed metadata
  */
-export async function getAnnotations() {
+export async function getAnnotations(userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -1173,6 +1206,7 @@ export async function getAnnotations() {
       )
     `)
     .eq('env', env)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1188,7 +1222,7 @@ export async function getAnnotations() {
  * @param {string} feedItemId - Feed item UUID
  * @returns {Promise<Array>} List of annotations for the article
  */
-export async function getAnnotationsForArticle(feedItemId) {
+export async function getAnnotationsForArticle(feedItemId, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -1200,6 +1234,7 @@ export async function getAnnotationsForArticle(feedItemId) {
     .select('*')
     .eq('feed_item_id', feedItemId)
     .eq('env', env)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1243,7 +1278,7 @@ function transformAnnotationWithMetadata(dbAnnotation) {
  * @param {string} annotationId - Annotation UUID
  * @returns {Promise<void>}
  */
-export async function deleteAnnotation(annotationId) {
+export async function deleteAnnotation(annotationId, userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured');
   }
@@ -1254,7 +1289,8 @@ export async function deleteAnnotation(annotationId) {
     .from('annotations')
     .delete()
     .eq('id', annotationId)
-    .eq('env', env);
+    .eq('env', env)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('[DB] Error deleting annotation:', error);

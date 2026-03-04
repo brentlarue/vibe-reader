@@ -25,16 +25,16 @@ const NEVERENOUGH_SOURCE_TYPE = 'custom';
  * Creates it if it doesn't exist
  * @returns {Promise<Object>} The feed object
  */
-async function ensureNeverEnoughFeed() {
+async function ensureNeverEnoughFeed(userId) {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase not configured - custom feeds require database');
   }
 
   const fullFeedUrl = NEVERENOUGH_FEED_URL;
-  
+
   // Check if feed already exists
-  let feed = await feedRepo.getFeedByUrl(fullFeedUrl);
-  
+  let feed = await feedRepo.getFeedByUrl(fullFeedUrl, userId);
+
   if (!feed) {
     // Create the feed
     const metadata = getFeedMetadata();
@@ -43,10 +43,11 @@ async function ensureNeverEnoughFeed() {
       displayName: metadata.title,
       rssTitle: metadata.title,
       sourceType: NEVERENOUGH_SOURCE_TYPE,
+      userId,
     });
     console.log(`[Custom Feeds] Created NeverEnough feed with ID: ${feed.id}`);
   }
-  
+
   return feed;
 }
 
@@ -68,16 +69,16 @@ router.post('/neverenough/refresh', async (req, res) => {
     }
 
     // Ensure feed exists
-    const feed = await ensureNeverEnoughFeed();
-    
+    const feed = await ensureNeverEnoughFeed(req.user.id);
+
     // Scrape all issues
     console.log('[Custom Feeds] Starting NeverEnough scrape...');
     const issues = await scrapeAllIssues({ maxPages: 10 });
-    
+
     if (issues.length === 0) {
       console.warn('[Custom Feeds] No issues found during scrape');
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: 'Scrape completed but no issues found',
         newItems: 0,
         totalScraped: 0,
@@ -85,7 +86,7 @@ router.post('/neverenough/refresh', async (req, res) => {
     }
 
     // Get existing items to track what's new
-    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id });
+    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id, userId: req.user.id });
     const existingUrls = new Set(existingItems.map(item => item.url));
     
     // Filter to only new items (items that don't exist yet)
@@ -133,10 +134,10 @@ router.post('/neverenough/refresh', async (req, res) => {
     }));
 
     // Upsert new items
-    await feedRepo.upsertFeedItems(feed.id, feedItems);
-    
+    await feedRepo.upsertFeedItems(feed.id, feedItems, req.user.id);
+
     console.log(`[Custom Feeds] Added ${limitedNewIssues.length} new NeverEnough issues (limited to 5 most recent)`);
-    
+
     return res.json({
       success: true,
       message: `Added ${limitedNewIssues.length} new issues`,
@@ -171,10 +172,10 @@ router.get('/neverenough/rss.xml', async (req, res) => {
     }
 
     // Ensure feed exists
-    const feed = await ensureNeverEnoughFeed();
-    
+    const feed = await ensureNeverEnoughFeed(req.user.id);
+
     // Get all items for this feed, ordered by date
-    const items = await feedRepo.getFeedItems({ feedId: feed.id });
+    const items = await feedRepo.getFeedItems({ feedId: feed.id, userId: req.user.id });
     
     // Get feed metadata
     const metadata = getFeedMetadata();
@@ -214,9 +215,9 @@ router.get('/neverenough/info', async (req, res) => {
 
     if (isSupabaseConfigured()) {
       try {
-        const feed = await feedRepo.getFeedByUrl(NEVERENOUGH_FEED_URL);
+        const feed = await feedRepo.getFeedByUrl(NEVERENOUGH_FEED_URL, req.user.id);
         if (feed) {
-          const items = await feedRepo.getFeedItems({ feedId: feed.id });
+          const items = await feedRepo.getFeedItems({ feedId: feed.id, userId: req.user.id });
           feedInfo.feedId = feed.id;
           feedInfo.itemCount = items.length;
           feedInfo.status = 'active';
@@ -260,16 +261,16 @@ router.post('/neverenough/refetch-content', async (req, res) => {
     }
 
     // Get feed
-    const feed = await feedRepo.getFeedByUrl(NEVERENOUGH_FEED_URL);
+    const feed = await feedRepo.getFeedByUrl(NEVERENOUGH_FEED_URL, req.user.id);
     if (!feed) {
       return res.status(404).json({
         error: 'Feed not found',
         message: 'NeverEnough feed has not been initialized',
       });
     }
-    
+
     // Get existing items that are missing fullContent
-    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id });
+    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id, userId: req.user.id });
     const itemsMissingContent = existingItems.filter(item => 
       !item.fullContent || item.fullContent.trim() === ''
     );
@@ -300,7 +301,7 @@ router.post('/neverenough/refetch-content', async (req, res) => {
             source: item.source,
             sourceType: item.sourceType,
             status: item.status,
-          }]);
+          }], req.user.id);
           updatedCount++;
           console.log(`[Custom Feeds] Updated content for: ${item.title}`);
         }
@@ -346,10 +347,10 @@ router.post('/neverenough/load-older', async (req, res) => {
     }
 
     // Ensure feed exists
-    const feed = await ensureNeverEnoughFeed();
-    
+    const feed = await ensureNeverEnoughFeed(req.user.id);
+
     // Get all existing items to find the oldest
-    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id });
+    const existingItems = await feedRepo.getFeedItems({ feedId: feed.id, userId: req.user.id });
     
     if (existingItems.length === 0) {
       return res.status(400).json({
@@ -416,8 +417,8 @@ router.post('/neverenough/load-older', async (req, res) => {
       status: 'inbox',
     }));
 
-    await feedRepo.upsertFeedItems(feed.id, feedItems);
-    
+    await feedRepo.upsertFeedItems(feed.id, feedItems, req.user.id);
+
     console.log(`[Custom Feeds] Added ${olderIssues.length} older NeverEnough issues`);
     
     return res.json({

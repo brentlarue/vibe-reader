@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import BriefPlayer from './BriefPlayer';
 import { BriefRun, FeedItem } from '../types';
+import { apiFetch } from '../utils/apiFetch';
 
 const WORKFLOW_STEPS = [
   { status: 'running', step: 'Refreshing feeds...' },
@@ -148,8 +149,8 @@ export default function BriefPage() {
       setError(null);
 
       // Get recent brief runs
-      const runsResponse = await fetch(`/api/brief/runs?limit=${LIMIT}&offset=${startOffset}`, {
-        credentials: 'include',
+      const runsResponse = await apiFetch(`/api/brief/runs?limit=${LIMIT}&offset=${startOffset}`, {
+
       });
 
       if (!runsResponse.ok) {
@@ -163,8 +164,8 @@ export default function BriefPage() {
       }
 
       // Get storage URL for constructing audio URLs
-      const storageUrlResponse = await fetch('/api/brief/storage-url', {
-        credentials: 'include',
+      const storageUrlResponse = await apiFetch('/api/brief/storage-url', {
+
       });
       const storageUrl = storageUrlResponse.ok ? (await storageUrlResponse.json()).storageUrl : null;
 
@@ -177,8 +178,8 @@ export default function BriefPage() {
           let thumbnail: string | null = null;
 
           try {
-            const itemsResponse = await fetch(`/api/brief/items?date=${run.date}`, {
-              credentials: 'include',
+            const itemsResponse = await apiFetch(`/api/brief/items?date=${run.date}`, {
+      
             });
             if (itemsResponse.ok) {
               items = await itemsResponse.json();
@@ -287,8 +288,8 @@ export default function BriefPage() {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/brief/runs/${generatingDate}`, {
-          credentials: 'include',
+        const response = await apiFetch(`/api/brief/runs/${generatingDate}`, {
+  
         });
 
         if (response.ok) {
@@ -335,12 +336,12 @@ export default function BriefPage() {
       
       setGeneratingDate(yesterdayStr);
       
-      const response = await fetch('/api/brief/generate', {
+      const response = await apiFetch('/api/brief/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
+
         body: JSON.stringify({ date: yesterdayStr }),
       });
 
@@ -433,9 +434,9 @@ export default function BriefPage() {
             }
 
             try {
-              const response = await fetch(`/api/brief/${selectedBrief.date}`, {
+              const response = await apiFetch(`/api/brief/${selectedBrief.date}`, {
                 method: 'DELETE',
-                credentials: 'include',
+        
               });
 
               if (!response.ok) {

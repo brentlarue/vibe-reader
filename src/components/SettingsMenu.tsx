@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Theme, Feed } from '../types';
 import { storage } from '../utils/storage';
 import { itemBelongsToFeed } from '../utils/feedMatching';
@@ -20,6 +21,7 @@ interface SettingsMenuProps {
 
 export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProps) {
   const { theme, setTheme } = useTheme();
+  const { signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -115,16 +117,11 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      window.location.href = '/login';
+      await signOut();
     } catch (error) {
       console.error('Logout error:', error);
-      // Still redirect to login even if logout request fails
-      window.location.href = '/login';
     }
+    window.location.href = '/login';
   };
 
   const handleRefreshFeeds = async () => {

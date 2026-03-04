@@ -599,9 +599,8 @@ export const storage = {
    */
   testConnection: async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await fetch('/api/feeds', {
-        credentials: 'include',
-      });
+      const { apiFetch } = await import('./apiFetch');
+      const response = await apiFetch('/api/feeds');
       
       if (response.status === 401) {
         return { success: false, error: 'Not authenticated - please log in again' };

@@ -181,10 +181,10 @@ router.post('/link', async (req, res) => {
     }
 
     // Get or create the Links pseudo-feed
-    const linksFeed = await feedRepo.getOrCreateLinksFeed();
-    
+    const linksFeed = await feedRepo.getOrCreateLinksFeed(req.user.id);
+
     // Check if this URL already exists
-    const existingItems = await feedRepo.getFeedItems({ feedId: linksFeed.id });
+    const existingItems = await feedRepo.getFeedItems({ feedId: linksFeed.id, userId: req.user.id });
     const alreadyExists = existingItems.some(item => item.url === finalUrl);
     
     if (alreadyExists) {
@@ -208,7 +208,7 @@ router.post('/link', async (req, res) => {
     };
 
     // Save to database
-    const [savedItem] = await feedRepo.upsertFeedItems(linksFeed.id, [feedItem]);
+    const [savedItem] = await feedRepo.upsertFeedItems(linksFeed.id, [feedItem], req.user.id);
     
     console.log(`[Ingest] Successfully ingested article: ${feedItem.title}`);
 

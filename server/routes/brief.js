@@ -29,7 +29,7 @@ router.post('/refresh', async (req, res) => {
       return res.status(503).json({ error: 'Supabase not configured' });
     }
 
-    const feeds = await feedRepo.getFeeds();
+    const feeds = await feedRepo.getFeeds(req.user.id);
     const rssFeeds = feeds.filter(f => f.sourceType === 'rss');
 
     if (rssFeeds.length === 0) {
@@ -94,7 +94,7 @@ router.post('/refresh', async (req, res) => {
         };
 
         // Get existing items for this feed to check for duplicates
-        const existingItems = await feedRepo.getFeedItems({ feedId: feed.id });
+        const existingItems = await feedRepo.getFeedItems({ feedId: feed.id, userId: req.user.id });
         const existingUrls = new Set(existingItems.map(item => item.url));
 
         // Transform RSS items to FeedItem format
@@ -121,7 +121,7 @@ router.post('/refresh', async (req, res) => {
           });
 
         if (newItems.length > 0) {
-          await feedRepo.upsertFeedItems(feed.id, newItems);
+          await feedRepo.upsertFeedItems(feed.id, newItems, req.user.id);
           totalItemsAdded += newItems.length;
           console.log(`[Brief] Refreshed feed ${feed.name}: ${newItems.length} new items`);
         }

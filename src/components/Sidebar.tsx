@@ -42,8 +42,7 @@ export default function Sidebar({ feeds, selectedFeedId, onFeedsChange, onRefres
 
   const navItems = [
     { path: '/inbox', label: 'Inbox' },
-    // Daily Brief is dev-only (requires local n8n instance)
-    ...(isDev ? [{ path: '/brief', label: 'Daily Brief' }] : []),
+    // Daily Brief — PARKED (n8n dependency removed)
     { path: '/saved', label: 'Later' },
     { path: '/bookmarks', label: 'Bookmarks' },
     { path: '/notes', label: 'Notes' },

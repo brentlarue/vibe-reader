@@ -1,10 +1,10 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
 import NotesPage from './NotesPage';
-import BriefPage from './BriefPage';
+// import BriefPage from './BriefPage'; // PARKED: Daily Brief feature
 import BackToTop from './BackToTop';
 import { Feed } from '../types';
 
@@ -33,11 +33,6 @@ function AppContent({
 }: AppContentProps) {
   const location = useLocation();
 
-  // Detect if we're in dev environment (Daily Brief is dev-only)
-  const isDev = useMemo(() => {
-    const hostname = window.location.hostname;
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.local') || hostname.includes('dev');
-  }, []);
 
   const toggleMobileDrawer = () => {
     setIsMobileDrawerOpen(!isMobileDrawerOpen);
@@ -153,8 +148,9 @@ function AppContent({
           <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
-          {/* Daily Brief is dev-only (requires local n8n instance) */}
+          {/* PARKED: Daily Brief feature
           {isDev && <Route path="/brief/:date?" element={<BriefPage />} />}
+          */}
           <Route path="/article/:id" element={<ArticleReader />} />
         </Routes>
       </main>
