@@ -6,6 +6,7 @@ import { Theme, Feed } from '../types';
 import { storage } from '../utils/storage';
 import { itemBelongsToFeed } from '../utils/feedMatching';
 import { preferences } from '../utils/preferences';
+import AIKeysSettings from './AIKeysSettings';
 
 const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'yc' }[] = [
   { value: 'light', label: 'Light', icon: 'sun' },
@@ -24,6 +25,7 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
   const { signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAIKeysOpen, setIsAIKeysOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState({ bottom: 0, left: 0, width: 0 });
   const [lastRefreshTime, setLastRefreshTime] = useState<string | null>(null);
@@ -234,7 +236,7 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
       {/* Settings Menu Card - also rendered via portal to be above overlay */}
       {isOpen && createPortal(
         <div
-          className="fixed shadow-xl p-4 space-y-4 z-[101]"
+          className="fixed shadow-xl p-3 z-[101]"
           style={{
             backgroundColor: 'var(--theme-card-bg)',
             border: '1px solid var(--theme-border)',
@@ -244,86 +246,89 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
           }}
         >
           {/* Theme Section */}
-          <div>
-            <div 
-              className="flex items-center gap-1 p-1"
-              style={{ backgroundColor: 'var(--theme-hover-bg)' }}
-            >
-              {themes.map((t) => (
-                <button
-                  key={t.value}
-                  onClick={() => setTheme(t.value)}
-                  className={`flex-1 flex items-center justify-center px-2 py-2.5 transition-colors ${
-                    theme === t.value
-                      ? 'shadow-sm'
-                      : 'hover:opacity-80'
-                  }`}
-                  style={{
-                    backgroundColor: theme === t.value ? 'var(--theme-card-bg)' : 'transparent',
-                    color: 'var(--theme-text-secondary)',
-                  }}
-                  title={t.label}
-                  aria-label={t.label}
-                >
-                  {t.icon === 'sun' && (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                  )}
-                  {t.icon === 'moon' && (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                  )}
-                  {t.icon === 'book' && (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                  )}
-                  {t.icon === 'yc' && (
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="2" y="2" width="20" height="20" strokeWidth="2" />
-                      <path d="M7 6L12 13V18M17 6L12 13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </button>
-              ))}
-            </div>
+          <div
+            className="flex items-center gap-1 p-1 mb-1"
+            style={{ backgroundColor: 'var(--theme-hover-bg)' }}
+          >
+            {themes.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTheme(t.value)}
+                className={`flex-1 flex items-center justify-center px-2 py-2.5 transition-colors ${
+                  theme === t.value
+                    ? 'shadow-sm'
+                    : 'hover:opacity-80'
+                }`}
+                style={{
+                  backgroundColor: theme === t.value ? 'var(--theme-card-bg)' : 'transparent',
+                  color: 'var(--theme-text-secondary)',
+                }}
+                title={t.label}
+                aria-label={t.label}
+              >
+                {t.icon === 'sun' && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                )}
+                {t.icon === 'moon' && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+                {t.icon === 'book' && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                )}
+                {t.icon === 'yc' && (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="2" width="20" height="20" strokeWidth="2" />
+                    <path d="M7 6L12 13V18M17 6L12 13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+            ))}
           </div>
 
           {/* Last refreshed */}
-          <div 
-            className="px-2 py-2.5 text-sm"
-            style={{
-              borderTop: '1px solid var(--theme-border)',
-              paddingTop: '12px',
-            }}
-          >
-            <div style={{ 
-              color: 'var(--theme-text-secondary)',
-              marginBottom: '4px',
-            }}>
+          <div className="px-2 py-2 text-sm">
+            <div style={{ color: 'var(--theme-text-secondary)' }}>
               Last refreshed:
             </div>
-            <div 
-              className="text-xs"
-              style={{ 
-                color: 'var(--theme-text-muted)',
-                marginTop: '2px',
-              }}
+            <div
+              className="text-xs mt-0.5"
+              style={{ color: 'var(--theme-text-muted)' }}
             >
               {lastRefreshTime ? formatRefreshTime(lastRefreshTime) : 'Never'}
             </div>
           </div>
 
+          {/* AI API Keys */}
+          <button
+            onClick={() => setIsAIKeysOpen(true)}
+            className="w-full text-left px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--theme-text-secondary)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span>AI API Keys</span>
+          </button>
+
           {/* Refresh feeds */}
           <button
             onClick={handleRefreshFeeds}
             disabled={isRefreshing || feeds.filter(f => f.sourceType !== 'link').length === 0}
-            className="w-full text-left px-2 py-2.5 text-sm transition-colors disabled:cursor-not-allowed"
+            className="w-full text-left px-2 py-2 text-sm transition-colors disabled:cursor-not-allowed"
             style={{
-              color: isRefreshing || feeds.filter(f => f.sourceType !== 'link').length === 0 
-                ? 'var(--theme-text-muted)' 
+              color: isRefreshing || feeds.filter(f => f.sourceType !== 'link').length === 0
+                ? 'var(--theme-text-muted)'
                 : 'var(--theme-text-secondary)',
             }}
             onMouseEnter={(e) => {
@@ -345,10 +350,8 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
           {/* Cull the herd */}
           <button
             onClick={handleCullTheHerd}
-            className="w-full text-left px-2 py-2.5 text-sm transition-colors"
-            style={{
-              color: 'var(--theme-text-secondary)',
-            }}
+            className="w-full text-left px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--theme-text-secondary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--theme-text)';
               e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
@@ -364,22 +367,17 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
           {/* Clear cache */}
           <button
             onClick={async () => {
-              // First test if we can reach the server
               const connectionTest = await storage.testConnection();
               if (!connectionTest.success) {
                 alert(`Cannot sync with server: ${connectionTest.error}\n\nPlease try logging out and back in.`);
                 return;
               }
-              
               storage.clearLocalCache();
               setIsOpen(false);
-              // Force reload to fetch fresh data from server
               window.location.reload();
             }}
-            className="w-full text-left px-2 py-2.5 text-sm transition-colors"
-            style={{
-              color: 'var(--theme-text-secondary)',
-            }}
+            className="w-full text-left px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--theme-text-secondary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--theme-text)';
               e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
@@ -395,10 +393,8 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
           {/* Log out */}
           <button
             onClick={handleLogout}
-            className="w-full text-left px-2 py-2.5 text-sm transition-colors"
-            style={{
-              color: 'var(--theme-text-secondary)',
-            }}
+            className="w-full text-left px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--theme-text-secondary)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--theme-text)';
               e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
@@ -413,6 +409,7 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
         </div>,
         document.body
       )}
+      <AIKeysSettings isOpen={isAIKeysOpen} onClose={() => setIsAIKeysOpen(false)} />
     </div>
   );
 }

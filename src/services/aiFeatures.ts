@@ -39,6 +39,9 @@ export async function generateAIFeature(item: FeedItem, featureType: AIFeatureTy
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      if (errorData.code === 'MISSING_USER_AI_KEY') {
+        throw new Error('Add your API key in Settings to use AI features.');
+      }
       throw new Error(`API error: ${response.status} ${errorData.message || response.statusText}`);
     }
 

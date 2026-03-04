@@ -1021,10 +1021,10 @@ export default function ArticleReader() {
 
   // Helper function to check if summary needs to be generated
   const needsSummary = (item: FeedItem): boolean => {
-    // Check if summary is missing, undefined, empty, or is the error message
-    return !item.aiSummary || 
-           item.aiSummary.trim() === '' || 
-           item.aiSummary === 'Summary not available.';
+    return !item.aiSummary ||
+           item.aiSummary.trim() === '' ||
+           item.aiSummary === 'Summary not available.' ||
+           item.aiSummary.includes('API key in Settings');
   };
 
   const handleGenerateSummary = async () => {
@@ -1055,28 +1055,27 @@ export default function ArticleReader() {
     } catch (error) {
       console.error('Error generating summary:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      console.error('Error details:', {
-        message: errorMessage,
-        stack: errorStack,
-        itemId: item?.id,
-        itemTitle: item?.title,
-      });
-      
+
       // Check if backend is not running
       if (error instanceof TypeError && error.message.includes('fetch')) {
         console.error('⚠️ Backend server is not running. Start it with: npm run dev:server or npm run dev:all');
       }
-      
-      // Set fallback error message
+
       const currentRouteId = id ? decodeURIComponent(id) : null;
       if (currentRouteId === item.id || currentRouteId === item.url || id === item.id) {
-        try {
-          await storage.updateItemSummary(item.id, 'Summary not available.');
-          setItem({ ...item, aiSummary: 'Summary not available.' });
-        } catch (updateError) {
-          console.error('Error saving fallback summary:', updateError);
+        // For missing-key errors, show the message in the UI but don't persist it,
+        // so the "Generate Summary" button reappears after adding a key.
+        const isMissingKey = errorMessage.includes('API key in Settings');
+        const displayMessage = isMissingKey ? errorMessage : 'Summary not available.';
+
+        if (!isMissingKey) {
+          try {
+            await storage.updateItemSummary(item.id, displayMessage);
+          } catch (updateError) {
+            console.error('Error saving fallback summary:', updateError);
+          }
         }
+        setItem({ ...item, aiSummary: displayMessage });
       }
     } finally {
       // Only clear if this is still the current item being processed
@@ -1116,7 +1115,13 @@ export default function ArticleReader() {
       setItem({ ...item, [fieldMap[featureType]]: result });
     } catch (error) {
       console.error(`Error generating ${featureType}:`, error);
-      // Optionally show error to user
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMsg.includes('API key in Settings')) {
+        setAiFeatureResults(prev => ({
+          ...prev,
+          [featureType]: errorMsg,
+        }));
+      }
     } finally {
       setGeneratingFeature(null);
     }

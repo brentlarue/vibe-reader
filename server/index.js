@@ -61,8 +61,14 @@ const { getAppEnv } = await import('./db/env.js');
 // Import custom feeds router
 const customFeedsRouter = (await import('./routes/customFeeds.js')).default;
 
+// Import user AI key repository
+const { getUserAiKey } = await import('./db/userAiKeyRepository.js');
+
 // Import LLM router
 const llmRouter = (await import('./routes/llm.js')).default;
+
+// Import user AI keys router
+const userAiKeysRouter = (await import('./routes/userAiKeys.js')).default;
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -710,11 +716,14 @@ app.post('/api/summarize', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'text is required' });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = await getUserAiKey(req.user.id, 'openai');
 
     if (!apiKey) {
-      console.error('OpenAI API key not found in environment variables');
-      return res.status(500).json({ error: 'Server configuration error' });
+      return res.status(400).json({
+        error: 'No OpenAI API key configured',
+        code: 'MISSING_USER_AI_KEY',
+        message: 'Add your OpenAI API key in Settings to use AI features.',
+      });
     }
 
     // Prepare and chunk content for better coverage
@@ -872,11 +881,14 @@ app.post('/api/ai-feature', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'featureType must be one of: insightful-reply, investor-analysis, founder-implications' });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = await getUserAiKey(req.user.id, 'openai');
 
     if (!apiKey) {
-      console.error('OpenAI API key not found in environment variables');
-      return res.status(500).json({ error: 'Server configuration error' });
+      return res.status(400).json({
+        error: 'No OpenAI API key configured',
+        code: 'MISSING_USER_AI_KEY',
+        message: 'Add your OpenAI API key in Settings to use AI features.',
+      });
     }
 
     // Limit content length to avoid token limits
@@ -1998,6 +2010,9 @@ app.use('/api/custom-feeds', requireAuth, customFeedsRouter);
 
 // Mount LLM router with auth middleware (for AI features)
 app.use('/api/debug', requireAuth, llmRouter);
+
+// Mount user AI keys router
+app.use('/api/user-ai-keys', requireAuth, userAiKeysRouter);
 
 // Import ingest router (for single article ingestion)
 const ingestRouter = (await import('./routes/ingest.js')).default;

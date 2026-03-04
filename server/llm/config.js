@@ -1,7 +1,8 @@
 /**
  * Model Configuration
- * 
- * Defines available models, their providers, and pricing
+ *
+ * Defines available models, their providers, and pricing.
+ * API keys are provided per-request from user's stored keys — not from env vars.
  */
 
 /**
@@ -10,18 +11,22 @@
  */
 const MODEL_PRICING = {
   // OpenAI models
-  'gpt-4o': { input: 2.50, output: 10.00 }, // $2.50/$10 per 1M tokens
-  'gpt-4o-mini': { input: 0.15, output: 0.60 }, // $0.15/$0.60 per 1M tokens
+  'gpt-4o': { input: 2.50, output: 10.00 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
   'gpt-4-turbo': { input: 10.00, output: 30.00 },
   'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
-  
-  // Anthropic models (optional, for future)
+
+  // Anthropic models
   'claude-3-5-sonnet': { input: 3.00, output: 15.00 },
   'claude-3-haiku': { input: 0.25, output: 1.25 },
+
+  // Google models
+  'gemini-1.5-flash': { input: 0.075, output: 0.30 },
+  'gemini-1.5-pro': { input: 1.25, output: 5.00 },
 };
 
 /**
- * Get model provider (openai, anthropic, etc.)
+ * Get model provider (openai, anthropic, google)
  * @param {string} model - Model name
  * @returns {string} Provider name
  */
@@ -32,22 +37,10 @@ export function getModelProvider(model) {
   if (model.startsWith('claude-')) {
     return 'anthropic';
   }
+  if (model.startsWith('gemini-')) {
+    return 'google';
+  }
   return 'unknown';
-}
-
-/**
- * Get API key for a model provider
- * @param {string} provider - Provider name
- * @returns {string|undefined} API key
- */
-export function getProviderAPIKey(provider) {
-  if (provider === 'openai') {
-    return process.env.OPENAI_API_KEY;
-  }
-  if (provider === 'anthropic') {
-    return process.env.ANTHROPIC_API_KEY;
-  }
-  return undefined;
 }
 
 /**
@@ -60,12 +53,12 @@ export function getProviderAPIKey(provider) {
 export function calculateCost(model, inputTokens, outputTokens) {
   const pricing = MODEL_PRICING[model];
   if (!pricing) {
-    return 0; // Unknown model, can't calculate cost
+    return 0;
   }
-  
+
   const inputCost = (inputTokens / 1_000_000) * pricing.input;
   const outputCost = (outputTokens / 1_000_000) * pricing.output;
-  
+
   return inputCost + outputCost;
 }
 
@@ -75,7 +68,6 @@ export function calculateCost(model, inputTokens, outputTokens) {
  * @returns {string} Default model name
  */
 export function getDefaultModel(env = 'prod') {
-  // Use cheaper model in dev, better model in prod
   if (env === 'dev') {
     return 'gpt-4o-mini';
   }
@@ -83,19 +75,17 @@ export function getDefaultModel(env = 'prod') {
 }
 
 /**
- * Get model configuration
+ * Get model configuration (without API key — caller must supply it)
  * @param {string} model - Model name
  * @returns {Object} Model config
  */
 export function getModelConfig(model) {
   const provider = getModelProvider(model);
-  const apiKey = getProviderAPIKey(provider);
-  
+
   return {
     name: model,
     provider,
-    apiKey,
     pricing: MODEL_PRICING[model] || null,
-    maxTokens: provider === 'openai' ? 4096 : 4096, // Default max tokens
+    maxTokens: 4096,
   };
 }
