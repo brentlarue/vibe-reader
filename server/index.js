@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { jwtVerify } from 'jose';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,6 +30,11 @@ if (envResult.error) {
     console.log('[ENV] ✓ SUPABASE_SERVICE_ROLE_KEY is set');
   } else {
     console.warn('[ENV] ⚠ SUPABASE_SERVICE_ROLE_KEY is NOT set in .env file');
+  }
+  if (process.env.SUPABASE_JWT_SECRET) {
+    console.log('[ENV] ✓ SUPABASE_JWT_SECRET is set');
+  } else {
+    console.warn('[ENV] ⚠ SUPABASE_JWT_SECRET is NOT set in .env file');
   }
   if (process.env.N8N_WEBHOOK_URL) {
     console.log('[ENV] ✓ N8N_WEBHOOK_URL is set');
@@ -64,10 +69,10 @@ const PORT = process.env.PORT || 3001;
 // Check if we're in production (Render sets NODE_ENV automatically)
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
 
-// Supabase JWKS for JWT verification
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const JWKS = SUPABASE_URL
-  ? createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`))
+// Supabase JWT verification using HS256 secret
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+const JWT_SECRET = SUPABASE_JWT_SECRET
+  ? new TextEncoder().encode(SUPABASE_JWT_SECRET)
   : null;
 
 // Data file path
@@ -136,14 +141,14 @@ async function requireAuth(req, res, next) {
     }
   }
 
-  // JWT authentication via Supabase JWKS
-  if (!JWKS) {
-    console.error('[AUTH] JWKS not configured (missing SUPABASE_URL)');
+  // JWT authentication via Supabase JWT secret (HS256)
+  if (!JWT_SECRET) {
+    console.error('[AUTH] JWT secret not configured (missing SUPABASE_JWT_SECRET)');
     return res.status(500).json({ error: 'Auth not configured' });
   }
 
   try {
-    const { payload } = await jwtVerify(token, JWKS);
+    const { payload } = await jwtVerify(token, JWT_SECRET);
     req.user = {
       type: 'jwt',
       id: payload.sub,
@@ -152,8 +157,6 @@ async function requireAuth(req, res, next) {
     return next();
   } catch (err) {
     console.error('[AUTH] JWT verification failed:', err.code, err.message);
-    console.error('[AUTH] SUPABASE_URL used for JWKS:', SUPABASE_URL);
-    console.error('[AUTH] Token preview:', token.substring(0, 20) + '...');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 }
