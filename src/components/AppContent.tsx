@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import FeedList from './FeedList';
 import ArticleReader from './ArticleReader';
 import NotesPage from './NotesPage';
+import FeatureRequestBoard from './FeatureRequestBoard';
 // import BriefPage from './BriefPage'; // PARKED: Daily Brief feature
 import BackToTop from './BackToTop';
 import { Feed } from '../types';
@@ -147,6 +148,7 @@ function AppContent({
           <Route path="/saved" element={<FeedList status="saved" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/bookmarks" element={<FeedList status="bookmarked" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/feature-requests" element={<FeatureRequestBoard />} />
           <Route path="/archive" element={<FeedList status="archived" selectedFeedId={selectedFeedId} feeds={feeds} onRefresh={() => handleRefreshAllFeeds(false)} />} />
           {/* PARKED: Daily Brief feature
           {isDev && <Route path="/brief/:date?" element={<BriefPage />} />}

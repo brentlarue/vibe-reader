@@ -10,6 +10,7 @@ Master list of all outstanding work and new feature requests. Each item will be 
 **Status:** Identified, not started. Critical issues causing slow load times.
 
 **Phase 1 — Quick Wins (50-70% improvement):**
+
 - [ ] Server-side filtering in `loadItems()` — currently loads ALL 249+ items every navigation
 - [ ] Memoize word count calculations — `getWordCount()` runs on every sort
 - [ ] Throttle reading progress scroll handler — fires 100+/sec

@@ -70,6 +70,9 @@ const llmRouter = (await import('./routes/llm.js')).default;
 // Import user AI keys router
 const userAiKeysRouter = (await import('./routes/userAiKeys.js')).default;
 
+// Import feature requests router
+const featureRequestsRouter = (await import('./routes/featureRequests.js')).default;
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 // Check if we're in production (Render sets NODE_ENV automatically)
@@ -2013,6 +2016,9 @@ app.use('/api/debug', requireAuth, llmRouter);
 
 // Mount user AI keys router
 app.use('/api/user-ai-keys', requireAuth, userAiKeysRouter);
+
+// Mount feature requests router
+app.use('/api/feature-requests', requireAuth, featureRequestsRouter);
 
 // Import ingest router (for single article ingestion)
 const ingestRouter = (await import('./routes/ingest.js')).default;
