@@ -109,6 +109,7 @@ function envMiddleware(req, res, next) {
 async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[AUTH] No Bearer token for:', req.method, req.path);
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -150,7 +151,9 @@ async function requireAuth(req, res, next) {
     };
     return next();
   } catch (err) {
-    console.log('[AUTH] JWT verification failed:', err.message);
+    console.error('[AUTH] JWT verification failed:', err.code, err.message);
+    console.error('[AUTH] SUPABASE_URL used for JWKS:', SUPABASE_URL);
+    console.error('[AUTH] Token preview:', token.substring(0, 20) + '...');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 }
