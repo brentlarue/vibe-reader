@@ -130,13 +130,14 @@ export default function FeatureRequestBoard() {
             onClick={() => setSort('top')}
             style={{
               padding: '8px 16px',
-              border: '1px solid var(--theme-border)',
-              background: sort === 'top' ? 'var(--theme-accent)' : 'transparent',
-              color: sort === 'top' ? '#fff' : 'var(--theme-text)',
+              backgroundColor: sort === 'top' ? 'var(--theme-button-bg)' : 'var(--theme-hover-bg)',
+              color: sort === 'top' ? 'var(--theme-button-text)' : 'var(--theme-text-secondary)',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: '500',
+              border: 'none',
+              transition: 'colors 0.2s',
             }}
           >
             Top
@@ -145,13 +146,14 @@ export default function FeatureRequestBoard() {
             onClick={() => setSort('new')}
             style={{
               padding: '8px 16px',
-              border: '1px solid var(--theme-border)',
-              background: sort === 'new' ? 'var(--theme-accent)' : 'transparent',
-              color: sort === 'new' ? '#fff' : 'var(--theme-text)',
+              backgroundColor: sort === 'new' ? 'var(--theme-button-bg)' : 'var(--theme-hover-bg)',
+              color: sort === 'new' ? 'var(--theme-button-text)' : 'var(--theme-text-secondary)',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: '500',
+              border: 'none',
+              transition: 'colors 0.2s',
             }}
           >
             New
@@ -163,11 +165,9 @@ export default function FeatureRequestBoard() {
       <form
         onSubmit={handleSubmit}
         style={{
-          padding: '16px',
-          background: 'var(--theme-card-bg)',
-          border: '1px solid var(--theme-border)',
-          borderRadius: '6px',
           marginBottom: '24px',
+          borderBottom: '1px solid var(--theme-border)',
+          paddingBottom: '16px',
         }}
       >
         <input
@@ -214,13 +214,14 @@ export default function FeatureRequestBoard() {
           style={{
             padding: '10px 20px',
             background: 'var(--theme-accent)',
-            color: '#fff',
+            color: 'var(--theme-button-text)',
             border: 'none',
             borderRadius: '4px',
             cursor: isSubmitting || !title.trim() ? 'not-allowed' : 'pointer',
             fontSize: '14px',
             fontWeight: '500',
-            opacity: isSubmitting || !title.trim() ? 0.6 : 1,
+            opacity: isSubmitting || !title.trim() ? 0.5 : 1,
+            transition: 'opacity 0.2s',
           }}
         >
           {isSubmitting ? 'Submitting...' : 'Submit'}
@@ -253,17 +254,15 @@ export default function FeatureRequestBoard() {
           No feature requests yet. Be the first to share an idea!
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           {requests.map(request => (
             <div
               key={request.id}
               style={{
                 display: 'flex',
                 gap: '12px',
-                padding: '16px',
-                background: 'var(--theme-card-bg)',
-                border: '1px solid var(--theme-border)',
-                borderRadius: '6px',
+                padding: '16px 0',
+                borderBottom: '1px solid var(--theme-border)',
               }}
             >
               {/* Vote button */}

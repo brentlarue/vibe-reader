@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Theme, Feed } from '../types';
@@ -320,6 +321,24 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
           >
             <span>AI API Keys</span>
           </button>
+
+          {/* Feature Requests */}
+          <Link
+            to="/feature-requests"
+            onClick={() => setIsOpen(false)}
+            className="w-full block px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--theme-text-secondary)', textDecoration: 'none' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span>Feature Requests</span>
+          </Link>
 
           {/* Refresh feeds */}
           <button
