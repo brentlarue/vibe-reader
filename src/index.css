@@ -135,6 +135,7 @@ body {
     @apply text-base sm:text-lg;
     color: var(--theme-text-secondary);
     line-height: 1.75;
+    white-space: pre-line;
   }
 
   .article-content p {
