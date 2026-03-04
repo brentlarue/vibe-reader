@@ -218,15 +218,22 @@ router.post('/link', async (req, res) => {
       item: savedItem,
     });
   } catch (error) {
-    console.error('[Ingest] Error ingesting link:', error);
-    
+    console.error('[Ingest] Error ingesting link', {
+      userId: req.user.id,
+      url: source,
+      timestamp: new Date().toISOString(),
+      errorName: error.name,
+      errorMessage: error.message,
+      errorCode: error.code,
+    });
+
     if (error.name === 'AbortError') {
       return res.status(408).json({
         error: 'Request timeout',
         message: 'The URL took too long to respond',
       });
     }
-    
+
     return res.status(500).json({
       error: 'Ingestion failed',
       message: error.message || 'An unexpected error occurred',

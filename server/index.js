@@ -1226,7 +1226,15 @@ app.post('/api/feeds', requireAuth, async (req, res) => {
     await writeJsonFile(FEEDS_FILE, feeds);
     res.json(newFeed);
   } catch (error) {
-    console.error('Error creating feed:', error);
+    console.error('[Feeds] Error creating feed', {
+      userId: req.user.id,
+      url,
+      displayName,
+      timestamp: new Date().toISOString(),
+      errorMessage: error.message,
+      errorCode: error.code,
+      stack: error.stack,
+    });
     res.status(500).json({ error: 'Failed to create feed' });
   }
 });

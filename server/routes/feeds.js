@@ -66,7 +66,14 @@ router.post('/bulk', async (req, res) => {
       if (err.code === '23505') {
         duplicates.push(url);
       } else {
-        console.error(`[Feeds/Bulk] Error creating feed ${url}:`, err);
+        console.error('[Feeds/Bulk] Error creating feed', {
+          userId,
+          url,
+          displayName,
+          timestamp: new Date().toISOString(),
+          errorMessage: err.message,
+          errorCode: err.code,
+        });
         failed.push({ url, error: err.message || 'Unknown error' });
       }
     }
