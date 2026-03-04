@@ -13,11 +13,21 @@ export default function ResetPassword() {
   const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
-    // Supabase puts recovery tokens in the URL hash
+    // Check URL hash first (before Supabase client processes it)
     const hash = window.location.hash;
     if (hash.includes('type=recovery')) {
       setIsResetting(true);
     }
+
+    // Also listen for PASSWORD_RECOVERY event (Supabase may process the hash
+    // before the component mounts, removing it from the URL)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResetting(true);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleForgotPassword = async (e: FormEvent) => {
