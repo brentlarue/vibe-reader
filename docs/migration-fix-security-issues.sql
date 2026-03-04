@@ -14,33 +14,33 @@ ALTER TABLE feed_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE preferences ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for annotations table
--- Using auth.uid() check to satisfy Security Advisor (service role bypasses RLS anyway)
+-- Use (select auth.role()) to avoid per-row re-evaluation (Performance Advisor)
 DROP POLICY IF EXISTS "Allow all operations on annotations" ON annotations;
 CREATE POLICY "Allow all operations on annotations" ON annotations
   FOR ALL
-  USING (auth.role() = 'authenticated' OR auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'service_role');
+  USING ((select auth.role()) IN ('authenticated', 'service_role'))
+  WITH CHECK ((select auth.role()) IN ('authenticated', 'service_role'));
 
 -- Create policies for feeds table
 DROP POLICY IF EXISTS "Allow all operations on feeds" ON feeds;
 CREATE POLICY "Allow all operations on feeds" ON feeds
   FOR ALL
-  USING (auth.role() = 'authenticated' OR auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'service_role');
+  USING ((select auth.role()) IN ('authenticated', 'service_role'))
+  WITH CHECK ((select auth.role()) IN ('authenticated', 'service_role'));
 
 -- Create policies for feed_items table
 DROP POLICY IF EXISTS "Allow all operations on feed_items" ON feed_items;
 CREATE POLICY "Allow all operations on feed_items" ON feed_items
   FOR ALL
-  USING (auth.role() = 'authenticated' OR auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'service_role');
+  USING ((select auth.role()) IN ('authenticated', 'service_role'))
+  WITH CHECK ((select auth.role()) IN ('authenticated', 'service_role'));
 
 -- Create policies for preferences table
 DROP POLICY IF EXISTS "Allow all operations on preferences" ON preferences;
 CREATE POLICY "Allow all operations on preferences" ON preferences
   FOR ALL
-  USING (auth.role() = 'authenticated' OR auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'service_role');
+  USING ((select auth.role()) IN ('authenticated', 'service_role'))
+  WITH CHECK ((select auth.role()) IN ('authenticated', 'service_role'));
 
 -- ============================================================================
 -- FIX 2: Fix function search_path mutable warning
