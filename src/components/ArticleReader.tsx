@@ -1383,6 +1383,14 @@ export default function ArticleReader() {
           e.preventDefault();
           if (item?.url) window.open(item.url, '_blank', 'noopener,noreferrer');
           break;
+        case 'e': {
+          if (!item) break;
+          e.preventDefault();
+          await storage.updateItemStatus(item.id, 'archived');
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          handleBack();
+          break;
+        }
         case 's': {
           if (!item) break;
           e.preventDefault();
@@ -1399,14 +1407,6 @@ export default function ArticleReader() {
           await storage.updateItemStatus(item.id, newStatus);
           setItem({ ...item, status: newStatus });
           window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-          break;
-        }
-        case 'a': {
-          if (!item) break;
-          e.preventDefault();
-          await storage.updateItemStatus(item.id, 'archived');
-          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-          handleBack();
           break;
         }
         case 'u':

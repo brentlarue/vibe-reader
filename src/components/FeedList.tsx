@@ -220,12 +220,14 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
       if (focusedIndex < 0 || focusedIndex >= flatList.length) return;
       const focusedItem = flatList[focusedIndex];
 
-      if (e.key === 'e' || e.key === 'Enter') {
+      if (e.key === 'o' || e.key === 'Enter') {
         e.preventDefault();
         openFocusedItem(focusedItem, flatList, focusedIndex);
-      } else if (e.key === 'o') {
+      } else if (e.key === 'e') {
         e.preventDefault();
-        window.open(focusedItem.url, '_blank', 'noopener,noreferrer');
+        const newStatus = focusedItem.status === 'archived' ? 'inbox' : 'archived';
+        await storage.updateItemStatus(focusedItem.id, newStatus);
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
       } else if (e.key === 's') {
         e.preventDefault();
         const newStatus = focusedItem.status === 'saved' ? 'inbox' : 'saved';
@@ -234,11 +236,6 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
       } else if (e.key === 'b') {
         e.preventDefault();
         const newStatus = focusedItem.status === 'bookmarked' ? 'inbox' : 'bookmarked';
-        await storage.updateItemStatus(focusedItem.id, newStatus);
-        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-      } else if (e.key === 'a') {
-        e.preventDefault();
-        const newStatus = focusedItem.status === 'archived' ? 'inbox' : 'archived';
         await storage.updateItemStatus(focusedItem.id, newStatus);
         window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
       }

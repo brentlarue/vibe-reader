@@ -9,11 +9,10 @@ interface KeyboardShortcutsModalProps {
 const LIST_SHORTCUTS = [
   { key: 'j', description: 'Focus next item' },
   { key: 'k', description: 'Focus previous item' },
-  { key: 'e / Enter', description: 'Open focused item' },
-  { key: 'o', description: 'Open original URL in new tab' },
+  { key: 'o / Enter', description: 'Open focused item' },
+  { key: 'e', description: 'Archive (toggle)' },
   { key: 's', description: 'Save for later (toggle)' },
   { key: 'b', description: 'Bookmark (toggle)' },
-  { key: 'a', description: 'Archive (toggle)' },
   { key: '?', description: 'Show keyboard shortcuts' },
 ];
 
@@ -21,9 +20,9 @@ const ARTICLE_SHORTCUTS = [
   { key: 'j', description: 'Next article' },
   { key: 'k', description: 'Previous article' },
   { key: 'o', description: 'Open original URL in new tab' },
+  { key: 'e', description: 'Archive & return to list' },
   { key: 's', description: 'Save for later (toggle)' },
   { key: 'b', description: 'Bookmark (toggle)' },
-  { key: 'a', description: 'Archive & return to list' },
   { key: 'u / Esc', description: 'Go back to list' },
   { key: '?', description: 'Show keyboard shortcuts' },
 ];
