@@ -51,6 +51,13 @@
 
 **Scope:** Diagnostic workflow, auto-fix strategies (URL resolution, format detection, encoding, redirects), test harness, integration with feed repo. Depends on #2.
 
+### 10. [ ] Improve RSS Content Fetcher/Parser
+**Continue exploring and fixing undesirable behavior in the RSS content pipeline** — link blogs (like Daring Fireball) showing linked page content instead of feed descriptions, formatting issues, whitespace handling, and other feed-specific quirks.
+
+**Known issues:** Auto-fetch was overriding RSS content with linked URL content for link blogs. `white-space: pre-line` added for essays. More edge cases likely exist across different feed types.
+
+**Scope:** Audit content parsing across different feed types (link blogs, newsletters, full-text feeds, excerpt-only feeds), improve per-feed content strategy, handle whitespace/formatting correctly for each type.
+
 ### 11. [✓] Keyboard Shortcuts
 **Vim-style and common RSS reader shortcuts** — list view: `j`/`k` focus next/prev, `o`/Enter open, `e` archive, `s` save, `b` bookmark. Article view: `j`/`k` next/prev article, `o` open original, `e` archive & return, `s`/`b` status toggles, `u`/Esc go back. `?` opens shortcut reference modal in both views and settings menu.
 
@@ -65,9 +72,7 @@
 
 **Status:** ✓ RESOLVED (dashboard config change, no code change needed)
 
-### 10. [ ] Improve RSS Content Fetcher/Parser
-**Continue exploring and fixing undesirable behavior in the RSS content pipeline** — link blogs (like Daring Fireball) showing linked page content instead of feed descriptions, formatting issues, whitespace handling, and other feed-specific quirks.
 
-**Known issues:** Auto-fetch was overriding RSS content with linked URL content for link blogs. `white-space: pre-line` added for essays. More edge cases likely exist across different feed types.
 
-**Scope:** Audit content parsing across different feed types (link blogs, newsletters, full-text feeds, excerpt-only feeds), improve per-feed content strategy, handle whitespace/formatting correctly for each type.
+### 13. [ ] Add the ability for the admin user (me/Brent) to mark a product request as done.
+**Planning notes:** Research other products like product board and canny.io and replicate their simplified ux. I don't want the done to clutter the view over time, but i also want it to be easily viewable/discoverable which features have shipped. 

@@ -244,6 +244,15 @@ export default function ArticleReader() {
     navigate(`/article/${encodeURIComponent(prevId)}`);
   }, [navContext, item, navigate]);
 
+  // Navigate back to the list view (not browser history)
+  const handleBack = useCallback(() => {
+    if (navContext?.returnPath) {
+      navigate(navContext.returnPath);
+    } else {
+      navigate('/inbox');
+    }
+  }, [navContext, navigate]);
+
   // Load feeds for feed lookup
   useEffect(() => {
     const loadFeeds = async () => {
@@ -269,6 +278,7 @@ export default function ArticleReader() {
     setHasAttemptedLoad(false);
 
     const loadArticle = async () => {
+      try {
       // Decode the ID in case it was URL-encoded in the route
       const decodedId = decodeURIComponent(id);
       
@@ -338,8 +348,13 @@ export default function ArticleReader() {
       
       // Reset scroll flag when loading a new article
       hasScrolledToHighlightRef.current = false;
+    } catch (error) {
+      console.error('Error loading article:', error);
+      setHasAttemptedLoad(true);
+      setItem(null);
+    }
     };
-    
+
     loadArticle();
   }, [id]);
 
@@ -905,6 +920,72 @@ export default function ArticleReader() {
     return container.innerHTML;
   }, []);
 
+  // Keyboard shortcuts for article view
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        showShortcutsModal
+      ) return;
+
+      switch (e.key) {
+        case 'j':
+          e.preventDefault();
+          navigateToNext();
+          break;
+        case 'k':
+          e.preventDefault();
+          navigateToPrev();
+          break;
+        case 'o':
+          e.preventDefault();
+          if (item?.url) window.open(item.url, '_blank', 'noopener,noreferrer');
+          break;
+        case 'e': {
+          if (!item) break;
+          e.preventDefault();
+          await storage.updateItemStatus(item.id, 'archived');
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          handleBack();
+          break;
+        }
+        case 's': {
+          if (!item) break;
+          e.preventDefault();
+          const newStatus = item.status === 'saved' ? 'inbox' : 'saved';
+          await storage.updateItemStatus(item.id, newStatus);
+          setItem({ ...item, status: newStatus });
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          break;
+        }
+        case 'b': {
+          if (!item) break;
+          e.preventDefault();
+          const newStatus = item.status === 'bookmarked' ? 'inbox' : 'bookmarked';
+          await storage.updateItemStatus(item.id, newStatus);
+          setItem({ ...item, status: newStatus });
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          break;
+        }
+        case 'u':
+        case 'Escape':
+          e.preventDefault();
+          handleBack();
+          break;
+        case '?':
+          e.preventDefault();
+          setShowShortcutsModal(true);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [item, showShortcutsModal, navigateToNext, navigateToPrev, handleBack]);
+
   // Only show "not found" message if we've attempted to load and item is still null
   if (hasAttemptedLoad && !item) {
     return (
@@ -1339,9 +1420,34 @@ export default function ArticleReader() {
 
   // Get content - prefer fullContent, fallback to contentSnippet
   const rawContent = item.fullContent || item.contentSnippet || '';
-  const processedContent = processExternalLinks(rawContent);
+
+  // Detect plain-text content (no HTML tags) and convert to HTML paragraphs.
+  // Some feeds (e.g. Paul Graham) strip HTML during ingestion, leaving content as one
+  // continuous string where paragraphs are only detectable by punctuation patterns.
+  const isPlainText = rawContent.length > 0 && !/<[a-z][\s\S]*>/i.test(rawContent);
+  let htmlContent = rawContent;
+  if (isPlainText) {
+    const paragraphs = rawContent.split(/\n{2,}/);
+    if (paragraphs.length > 1) {
+      // Has double newlines — convert each block to a <p>
+      htmlContent = paragraphs
+        .map(para => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+        .join('');
+    } else {
+      // No newlines at all (e.g. PG essays stored as one blob). Detect paragraph boundaries
+      // by sentence-ending punctuation immediately followed by a capital letter (no space),
+      // which is the signature of stripped <p>...</p><p>... blocks with no separator added.
+      // Also handle PG-style footnote markers like "[1]" between period and next paragraph.
+      const withBreaks = rawContent
+        .replace(/([.!?])(\s{0,2}(?:\[\d+\])\s{0,2})([A-Z])/g, '$1$2</p><p>$3') // period + [n] + Capital
+        .replace(/([.!?])([A-Z])/g, '$1</p><p>$2'); // period immediately followed by Capital
+      htmlContent = `<p>${withBreaks}</p>`;
+    }
+  }
+
+  const processedContent = processExternalLinks(htmlContent);
   const content = applyHighlightsToContent(processedContent, highlights);
-  const contentText = rawContent.replace(/<[^>]*>/g, '').trim(); // Strip HTML for comparison
+  const contentText = htmlContent.replace(/<[^>]*>/g, '').trim(); // Strip HTML for comparison
   
   // Check if content exists and is meaningful (not just the title)
   const hasMeaningfulContent = content && content.trim().length > 0 && 
@@ -1349,81 +1455,6 @@ export default function ArticleReader() {
   
   // Check if we actually had content from the feed (not just empty)
   const hadContentFromFeed = !!(item.fullContent || item.contentSnippet);
-
-  // Navigate back to the list view (not browser history)
-  const handleBack = () => {
-    if (navContext?.returnPath) {
-      navigate(navContext.returnPath);
-    } else {
-      navigate('/inbox');
-    }
-  };
-
-  // Keyboard shortcuts for article view
-  useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable ||
-        showShortcutsModal
-      ) return;
-
-      switch (e.key) {
-        case 'j':
-          e.preventDefault();
-          navigateToNext();
-          break;
-        case 'k':
-          e.preventDefault();
-          navigateToPrev();
-          break;
-        case 'o':
-          e.preventDefault();
-          if (item?.url) window.open(item.url, '_blank', 'noopener,noreferrer');
-          break;
-        case 'e': {
-          if (!item) break;
-          e.preventDefault();
-          await storage.updateItemStatus(item.id, 'archived');
-          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-          handleBack();
-          break;
-        }
-        case 's': {
-          if (!item) break;
-          e.preventDefault();
-          const newStatus = item.status === 'saved' ? 'inbox' : 'saved';
-          await storage.updateItemStatus(item.id, newStatus);
-          setItem({ ...item, status: newStatus });
-          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-          break;
-        }
-        case 'b': {
-          if (!item) break;
-          e.preventDefault();
-          const newStatus = item.status === 'bookmarked' ? 'inbox' : 'bookmarked';
-          await storage.updateItemStatus(item.id, newStatus);
-          setItem({ ...item, status: newStatus });
-          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
-          break;
-        }
-        case 'u':
-        case 'Escape':
-          e.preventDefault();
-          handleBack();
-          break;
-        case '?':
-          e.preventDefault();
-          setShowShortcutsModal(true);
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [item, showShortcutsModal, navigateToNext, navigateToPrev]);
 
   return (
     <>

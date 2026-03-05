@@ -481,6 +481,7 @@ export default memo(FeedItemCard, (prevProps, nextProps) => {
     prevProps.scrollKey === nextProps.scrollKey &&
     prevProps.onStatusChange === nextProps.onStatusChange &&
     // Feeds array reference comparison (should be stable if feeds don't change)
-    prevProps.feeds === nextProps.feeds
+    prevProps.feeds === nextProps.feeds &&
+    prevProps.isFocused === nextProps.isFocused
   );
 });

@@ -35,54 +35,59 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   const hasRestoredScroll = useRef(false);
 
   const loadItems = useCallback(async () => {
-    // ✅ Use server-side filtering - only fetch items with matching status
-    const filtered = await storage.getFeedItems({
-      status,
-      feedId: selectedFeedId || undefined,
-    });
-    
-    // If server-side feedId filtering isn't available, filter client-side for selected feed
-    let finalItems = filtered;
-    if (selectedFeedId && filtered.length > 0) {
-      const selectedFeed = feeds.find(f => f.id === selectedFeedId);
-      if (selectedFeed) {
-        // Double-check with itemBelongsToFeed in case feedId matching isn't perfect
-        finalItems = filtered.filter((item) => {
-          // If item has feedId, use that for fast matching
-          if (item.feedId && item.feedId === selectedFeed.id) return true;
-          // Otherwise use itemBelongsToFeed for legacy items
-          return itemBelongsToFeed(item, selectedFeed);
+    try {
+      // ✅ Use server-side filtering - only fetch items with matching status
+      const filtered = await storage.getFeedItems({
+        status,
+        feedId: selectedFeedId || undefined,
+      });
+
+      // If server-side feedId filtering isn't available, filter client-side for selected feed
+      let finalItems = filtered;
+      if (selectedFeedId && filtered.length > 0) {
+        const selectedFeed = feeds.find(f => f.id === selectedFeedId);
+        if (selectedFeed) {
+          // Double-check with itemBelongsToFeed in case feedId matching isn't perfect
+          finalItems = filtered.filter((item) => {
+            // If item has feedId, use that for fast matching
+            if (item.feedId && item.feedId === selectedFeed.id) return true;
+            // Otherwise use itemBelongsToFeed for legacy items
+            return itemBelongsToFeed(item, selectedFeed);
+          });
+        }
+      }
+
+      // Sort items based on sort order
+      // ✅ Pre-compute word counts once for all items before sorting (performance optimization)
+      const wordCountMap = new Map<string, number>();
+      if (sortOrder === 'longest' || sortOrder === 'shortest') {
+        finalItems.forEach(item => {
+          const content = item.fullContent || item.contentSnippet || '';
+          const text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          wordCountMap.set(item.id, text.split(/\s+/).filter(word => word.length > 0).length);
         });
       }
-    }
-    
-    // Sort items based on sort order
-    // ✅ Pre-compute word counts once for all items before sorting (performance optimization)
-    const wordCountMap = new Map<string, number>();
-    if (sortOrder === 'longest' || sortOrder === 'shortest') {
-      finalItems.forEach(item => {
-        const content = item.fullContent || item.contentSnippet || '';
-        const text = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        wordCountMap.set(item.id, text.split(/\s+/).filter(word => word.length > 0).length);
-      });
-    }
 
-    const sorted = [...finalItems].sort((a, b) => {
-      if (sortOrder === 'newest' || sortOrder === 'oldest') {
-        // Sort by published date
-        const dateA = new Date(a.publishedAt).getTime();
-        const dateB = new Date(b.publishedAt).getTime();
-        return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-      } else {
-        // ✅ Use pre-computed word counts from map (much faster than recalculating)
-        const wordCountA = wordCountMap.get(a.id) || 0;
-        const wordCountB = wordCountMap.get(b.id) || 0;
-        return sortOrder === 'longest' ? wordCountB - wordCountA : wordCountA - wordCountB;
-      }
-    });
-    
-    setItems(sorted);
-    setHasAttemptedLoad(true);
+      const sorted = [...finalItems].sort((a, b) => {
+        if (sortOrder === 'newest' || sortOrder === 'oldest') {
+          // Sort by published date
+          const dateA = new Date(a.publishedAt).getTime();
+          const dateB = new Date(b.publishedAt).getTime();
+          return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+        } else {
+          // ✅ Use pre-computed word counts from map (much faster than recalculating)
+          const wordCountA = wordCountMap.get(a.id) || 0;
+          const wordCountB = wordCountMap.get(b.id) || 0;
+          return sortOrder === 'longest' ? wordCountB - wordCountA : wordCountA - wordCountB;
+        }
+      });
+
+      setItems(sorted);
+      setHasAttemptedLoad(true);
+    } catch (error) {
+      console.error('Error loading feed items:', error);
+      setHasAttemptedLoad(true);
+    }
   }, [status, sortOrder, selectedFeedId, feeds]);
 
   useEffect(() => {
