@@ -273,8 +273,7 @@ function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, 
       className="border-b py-6 sm:py-8 cursor-pointer hover:opacity-80 transition-opacity touch-manipulation"
       style={{
         borderColor: 'var(--theme-border)',
-        outline: isFocused ? '2px solid var(--theme-accent, #3b82f6)' : 'none',
-        outlineOffset: '-2px',
+        backgroundColor: isFocused ? 'var(--theme-hover-bg)' : 'transparent',
       }}
       onClick={handleClick}
     >
