@@ -1,12 +1,16 @@
 import { FeedItem, Feed } from '../types';
 import FeedItemCard from './FeedItemCard';
 import PullToRefresh from './PullToRefresh';
+import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { itemBelongsToFeed } from '../utils/feedMatching';
 import { fetchOlderRss } from '../utils/rss';
 import { apiFetch } from '../utils/apiFetch';
+
+// Session storage key for navigation context (matches FeedItemCard)
+const NAV_CONTEXT_KEY = 'articleNavContext';
 
 interface FeedListProps {
   status: FeedItem['status'];
@@ -23,7 +27,10 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [readingOrderFilter, setReadingOrderFilter] = useState<'all' | 'next' | 'later' | 'someday'>('all');
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const scrollKey = `scrollPosition_${status}_${selectedFeedId || 'all'}`;
   const hasRestoredScroll = useRef(false);
 
@@ -149,6 +156,97 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
       });
     }
   }, [location.pathname, scrollKey, items.length]);
+
+  // Reset focused index when view changes
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [status, selectedFeedId]);
+
+  // Keyboard shortcuts for list view
+  useEffect(() => {
+    const getFlatList = (): FeedItem[] => {
+      if (status === 'saved' && readingOrderFilter === 'all') {
+        const next = items.filter(i => getEffectiveReadingOrder(i) === 'next');
+        const later = items.filter(i => getEffectiveReadingOrder(i) === 'later');
+        const someday = items.filter(i => getEffectiveReadingOrder(i) === 'someday');
+        return [...next, ...later, ...someday];
+      }
+      if (status === 'saved' && readingOrderFilter !== 'all') {
+        return items.filter(i => getEffectiveReadingOrder(i) === readingOrderFilter);
+      }
+      return items;
+    };
+
+    const openFocusedItem = (item: FeedItem, flatList: FeedItem[], idx: number) => {
+      const allIds = flatList.map(i => i.id);
+      const navContext = {
+        itemIds: allIds,
+        currentIndex: idx,
+        returnPath: location.pathname,
+      };
+      sessionStorage.setItem(NAV_CONTEXT_KEY, JSON.stringify(navContext));
+      navigate(`/article/${encodeURIComponent(item.id)}`, { state: { fromList: true } });
+    };
+
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        showShortcutsModal
+      ) return;
+
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutsModal(true);
+        return;
+      }
+
+      const flatList = getFlatList();
+
+      if (e.key === 'j') {
+        e.preventDefault();
+        setFocusedIndex(prev => (flatList.length === 0 ? -1 : Math.min(prev + 1, flatList.length - 1)));
+        return;
+      }
+
+      if (e.key === 'k') {
+        e.preventDefault();
+        setFocusedIndex(prev => (flatList.length === 0 ? -1 : Math.max(prev - 1, 0)));
+        return;
+      }
+
+      if (focusedIndex < 0 || focusedIndex >= flatList.length) return;
+      const focusedItem = flatList[focusedIndex];
+
+      if (e.key === 'e' || e.key === 'Enter') {
+        e.preventDefault();
+        openFocusedItem(focusedItem, flatList, focusedIndex);
+      } else if (e.key === 'o') {
+        e.preventDefault();
+        window.open(focusedItem.url, '_blank', 'noopener,noreferrer');
+      } else if (e.key === 's') {
+        e.preventDefault();
+        const newStatus = focusedItem.status === 'saved' ? 'inbox' : 'saved';
+        await storage.updateItemStatus(focusedItem.id, newStatus);
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      } else if (e.key === 'b') {
+        e.preventDefault();
+        const newStatus = focusedItem.status === 'bookmarked' ? 'inbox' : 'bookmarked';
+        await storage.updateItemStatus(focusedItem.id, newStatus);
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      } else if (e.key === 'a') {
+        e.preventDefault();
+        const newStatus = focusedItem.status === 'archived' ? 'inbox' : 'archived';
+        await storage.updateItemStatus(focusedItem.id, newStatus);
+        window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusedIndex, showShortcutsModal, items, status, readingOrderFilter, location.pathname, navigate]);
 
   const handleStatusChange = () => {
     loadItems();
@@ -335,6 +433,16 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
         ) || null
       : null;
 
+  // Flat ordered list (matches keyboard navigation order) for isFocused lookup
+  const flatItems = groupedByReadingOrder
+    ? [
+        ...(groupedByReadingOrder.next || []),
+        ...(groupedByReadingOrder.later || []),
+        ...(groupedByReadingOrder.someday || []),
+      ]
+    : displayedItems;
+  const flatIndexById = new Map(flatItems.map((item, i) => [item.id, i]));
+
   // Only show "no items" message if we've attempted to load and items array is empty
   if (hasAttemptedLoad && items.length === 0) {
     const selectedFeed = selectedFeedId ? feeds.find(f => f.id === selectedFeedId) : null;
@@ -396,6 +504,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
   }
 
   return (
+  <>
   <PullToRefresh onRefresh={handleRefresh}>
       <div className="w-full max-w-3xl mx-auto">
       <div
@@ -544,6 +653,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
                     allItemIds={allItemIds}
                     itemIndex={items.findIndex((i) => i.id === item.id)}
                     feeds={feeds}
+                    isFocused={flatIndexById.get(item.id) === focusedIndex && focusedIndex >= 0}
                   />
                 ))}
               </div>
@@ -560,6 +670,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
             allItemIds={allItemIds}
             itemIndex={items.findIndex((i) => i.id === item.id)}
             feeds={feeds}
+            isFocused={flatIndexById.get(item.id) === focusedIndex && focusedIndex >= 0}
           />
         ))
       )}
@@ -595,5 +706,7 @@ export default function FeedList({ status, selectedFeedId, feeds, onRefresh }: F
       )}
     </div>
     </PullToRefresh>
+    <KeyboardShortcutsModal isOpen={showShortcutsModal} onClose={() => setShowShortcutsModal(false)} />
+  </>
   );
 }

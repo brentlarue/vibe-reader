@@ -50,3 +50,15 @@
 **Current state:** RSS parser with retries, content fetcher with fallbacks, custom scraper pattern.
 
 **Scope:** Diagnostic workflow, auto-fix strategies (URL resolution, format detection, encoding, redirects), test harness, integration with feed repo. Depends on #2.
+
+### 11. [✓] Keyboard Shortcuts
+**Vim-style and common RSS reader shortcuts** — list view: `j`/`k` focus next/prev, `e`/Enter open, `o` open original, `s` save, `b` bookmark, `a` archive. Article view: `j`/`k` next/prev article, `o` open original, `s`/`b`/`a` status toggles, `u`/Esc go back. `?` opens shortcut reference modal in both views.
+
+**Status:** ✓ COMPLETED — KeyboardShortcutsModal component, FeedList keyboard handler with focusedIndex + visual ring highlight, ArticleReader keyboard handler with navigateToPrev().
+
+### 10. [ ] Improve RSS Content Fetcher/Parser
+**Continue exploring and fixing undesirable behavior in the RSS content pipeline** — link blogs (like Daring Fireball) showing linked page content instead of feed descriptions, formatting issues, whitespace handling, and other feed-specific quirks.
+
+**Known issues:** Auto-fetch was overriding RSS content with linked URL content for link blogs. `white-space: pre-line` added for essays. More edge cases likely exist across different feed types.
+
+**Scope:** Audit content parsing across different feed types (link blogs, newsletters, full-text feeds, excerpt-only feeds), improve per-feed content strategy, handle whitespace/formatting correctly for each type.

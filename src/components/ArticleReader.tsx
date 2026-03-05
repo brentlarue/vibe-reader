@@ -6,6 +6,7 @@ import { summarizeItem } from '../services/aiSummarizer';
 import { generateAIFeature, AIFeatureType } from '../services/aiFeatures';
 import { createAnnotation, getAnnotationsForArticle } from '../utils/annotations';
 import ArticleActionBar from './ArticleActionBar';
+import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 import { getFeedDisplayName } from '../utils/feedMatching';
 
 // Session storage key for navigation context
@@ -39,6 +40,8 @@ export default function ArticleReader() {
     'investor-analysis': null,
     'founder-implications': null,
   });
+
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
 
   // Reading progress state
   const [readingProgress, setReadingProgress] = useState(0);
@@ -223,6 +226,22 @@ export default function ArticleReader() {
       sessionStorage.setItem(NAV_CONTEXT_KEY, JSON.stringify(newContext));
       navigate(`/article/${encodeURIComponent(nextId)}`);
     }
+  }, [navContext, item, navigate]);
+
+  // Navigate to previous item in the list
+  const navigateToPrev = useCallback(() => {
+    if (!navContext || !item) return;
+
+    const currentIdx = navContext.itemIds.findIndex(itemId =>
+      itemId === item.id || itemId === item.url
+    );
+
+    if (currentIdx <= 0) return; // Already at first item
+
+    const prevId = navContext.itemIds[currentIdx - 1];
+    const newContext = { ...navContext, currentIndex: currentIdx - 1 };
+    sessionStorage.setItem(NAV_CONTEXT_KEY, JSON.stringify(newContext));
+    navigate(`/article/${encodeURIComponent(prevId)}`);
   }, [navContext, item, navigate]);
 
   // Load feeds for feed lookup
@@ -1340,6 +1359,72 @@ export default function ArticleReader() {
     }
   };
 
+  // Keyboard shortcuts for article view
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        showShortcutsModal
+      ) return;
+
+      switch (e.key) {
+        case 'j':
+          e.preventDefault();
+          navigateToNext();
+          break;
+        case 'k':
+          e.preventDefault();
+          navigateToPrev();
+          break;
+        case 'o':
+          e.preventDefault();
+          if (item?.url) window.open(item.url, '_blank', 'noopener,noreferrer');
+          break;
+        case 's': {
+          if (!item) break;
+          e.preventDefault();
+          const newStatus = item.status === 'saved' ? 'inbox' : 'saved';
+          await storage.updateItemStatus(item.id, newStatus);
+          setItem({ ...item, status: newStatus });
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          break;
+        }
+        case 'b': {
+          if (!item) break;
+          e.preventDefault();
+          const newStatus = item.status === 'bookmarked' ? 'inbox' : 'bookmarked';
+          await storage.updateItemStatus(item.id, newStatus);
+          setItem({ ...item, status: newStatus });
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          break;
+        }
+        case 'a': {
+          if (!item) break;
+          e.preventDefault();
+          await storage.updateItemStatus(item.id, 'archived');
+          window.dispatchEvent(new CustomEvent('feedItemsUpdated'));
+          handleBack();
+          break;
+        }
+        case 'u':
+        case 'Escape':
+          e.preventDefault();
+          handleBack();
+          break;
+        case '?':
+          e.preventDefault();
+          setShowShortcutsModal(true);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [item, showShortcutsModal, navigateToNext, navigateToPrev]);
+
   return (
     <>
       {/* Reading Progress Bar - only visible on mobile/tablet */}
@@ -1926,6 +2011,7 @@ export default function ArticleReader() {
           </svg>
         </button>
       )}
+      <KeyboardShortcutsModal isOpen={showShortcutsModal} onClose={() => setShowShortcutsModal(false)} />
     </>
   );
 }

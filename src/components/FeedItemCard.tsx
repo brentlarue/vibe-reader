@@ -19,6 +19,7 @@ interface FeedItemCardProps {
   allItemIds?: string[];  // List of all item IDs in current view
   itemIndex?: number;     // Index of this item in the list
   feeds?: Feed[];         // Feeds array for displaying correct feed name
+  isFocused?: boolean;    // Whether this item is keyboard-focused
 }
 
 // Detect iOS
@@ -27,7 +28,7 @@ const isIOS = () => {
          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 };
 
-function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, feeds = [] }: FeedItemCardProps) {
+function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, feeds = [], isFocused = false }: FeedItemCardProps) {
   // ✅ Memoize feed display name (only recalc when feeds or item.feedId changes)
   const feedDisplayName = useMemo(
     () => getFeedDisplayName(item, feeds),
@@ -41,6 +42,14 @@ function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, 
   const readingOrderButtonRef = useRef<HTMLButtonElement>(null);
   const readingOrderMenuRef = useRef<HTMLDivElement>(null);
   const [readingOrderMenuPosition, setReadingOrderMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const articleRef = useRef<HTMLElement>(null);
+
+  // Scroll into view when keyboard-focused
+  useEffect(() => {
+    if (isFocused && articleRef.current) {
+      articleRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [isFocused]);
 
   const handleStatusChange = async (newStatus: FeedItem['status'], e: React.MouseEvent) => {
     e.stopPropagation();
@@ -259,9 +268,14 @@ function FeedItemCard({ item, onStatusChange, scrollKey, allItemIds, itemIndex, 
   };
 
   return (
-    <article 
+    <article
+      ref={articleRef}
       className="border-b py-6 sm:py-8 cursor-pointer hover:opacity-80 transition-opacity touch-manipulation"
-      style={{ borderColor: 'var(--theme-border)' }}
+      style={{
+        borderColor: 'var(--theme-border)',
+        outline: isFocused ? '2px solid var(--theme-accent, #3b82f6)' : 'none',
+        outlineOffset: '-2px',
+      }}
       onClick={handleClick}
     >
       <div className="flex items-start justify-between mb-3">
