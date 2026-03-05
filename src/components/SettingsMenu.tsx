@@ -8,6 +8,7 @@ import { storage } from '../utils/storage';
 import { itemBelongsToFeed } from '../utils/feedMatching';
 import { preferences } from '../utils/preferences';
 import AIKeysSettings from './AIKeysSettings';
+import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 
 const themes: { value: Theme; label: string; icon: 'sun' | 'moon' | 'book' | 'yc' }[] = [
   { value: 'light', label: 'Light', icon: 'sun' },
@@ -27,6 +28,7 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
   const [isOpen, setIsOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAIKeysOpen, setIsAIKeysOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState({ bottom: 0, left: 0, width: 0 });
   const [lastRefreshTime, setLastRefreshTime] = useState<string | null>(null);
@@ -340,6 +342,23 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
             <span>Feature Requests</span>
           </Link>
 
+          {/* Keyboard Shortcuts */}
+          <button
+            onClick={() => { setIsShortcutsOpen(true); setIsOpen(false); }}
+            className="w-full text-left px-2 py-2 text-sm transition-colors"
+            style={{ color: 'var(--theme-text-secondary)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text)';
+              e.currentTarget.style.backgroundColor = 'var(--theme-hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--theme-text-secondary)';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span>Keyboard shortcuts</span>
+          </button>
+
           {/* Refresh feeds */}
           <button
             onClick={handleRefreshFeeds}
@@ -429,6 +448,7 @@ export default function SettingsMenu({ onRefreshFeeds, feeds }: SettingsMenuProp
         document.body
       )}
       <AIKeysSettings isOpen={isAIKeysOpen} onClose={() => setIsAIKeysOpen(false)} />
+      <KeyboardShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
     </div>
   );
 }
