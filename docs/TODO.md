@@ -52,9 +52,18 @@
 **Scope:** Diagnostic workflow, auto-fix strategies (URL resolution, format detection, encoding, redirects), test harness, integration with feed repo. Depends on #2.
 
 ### 11. [✓] Keyboard Shortcuts
-**Vim-style and common RSS reader shortcuts** — list view: `j`/`k` focus next/prev, `e`/Enter open, `o` open original, `s` save, `b` bookmark, `a` archive. Article view: `j`/`k` next/prev article, `o` open original, `s`/`b`/`a` status toggles, `u`/Esc go back. `?` opens shortcut reference modal in both views.
+**Vim-style and common RSS reader shortcuts** — list view: `j`/`k` focus next/prev, `o`/Enter open, `e` archive, `s` save, `b` bookmark. Article view: `j`/`k` next/prev article, `o` open original, `e` archive & return, `s`/`b` status toggles, `u`/Esc go back. `?` opens shortcut reference modal in both views and settings menu.
 
-**Status:** ✓ COMPLETED — KeyboardShortcutsModal component, FeedList keyboard handler with focusedIndex + visual ring highlight, ArticleReader keyboard handler with navigateToPrev().
+**Status:** ✓ COMPLETED — KeyboardShortcutsModal component, FeedList keyboard handler with focusedIndex + visual ring highlight, ArticleReader keyboard handler with navigateToPrev(), settings menu entry.
+
+### 12. [✓] Fix dev login redirect to prod
+**After Google OAuth in dev, callback redirected to prod URL instead of localhost.**
+
+**Root cause:** Supabase's allowed Redirect URL list didn't include `http://localhost:5173/**`. The code was correct (`redirectTo: window.location.origin + /auth/callback`), but Supabase rejected the localhost URL and fell back to the production domain.
+
+**Fix:** Supabase Dashboard → Authentication → URL Configuration → add `http://localhost:5173/**` and `http://localhost:5173` to Redirect URLs.
+
+**Status:** ✓ RESOLVED (dashboard config change, no code change needed)
 
 ### 10. [ ] Improve RSS Content Fetcher/Parser
 **Continue exploring and fixing undesirable behavior in the RSS content pipeline** — link blogs (like Daring Fireball) showing linked page content instead of feed descriptions, formatting issues, whitespace handling, and other feed-specific quirks.
